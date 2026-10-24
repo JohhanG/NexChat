@@ -19,20 +19,14 @@ import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { hashPin } from '../lib/seguridad';
+import { PAISES_GLOBALES } from '../lib/paises';
 
 const STORAGE_REMEMBER_KEY = 'nexchat_recordar_credenciales';
 
-const PAISES = [
-  { code: '+57', label: '🇨🇴 Colombia (+57)' },
-  { code: '+52', label: '🇲🇽 México (+52)' },
-  { code: '+34', label: '🇪🇸 España (+34)' },
-  { code: '+54', label: '🇦🇷 Argentina (+54)' },
-  { code: '+56', label: '🇨🇱 Chile (+56)' },
-  { code: '+51', label: '🇵🇪 Perú (+51)' },
-  { code: '+593', label: '🇪🇨 Ecuador (+593)' },
-  { code: '+58', label: '🇻🇪 Venezuela (+58)' },
-  { code: '+1', label: '🇺🇸 EE.UU. (+1)' },
-];
+const PAISES = PAISES_GLOBALES.map((p) => ({
+  code: p.code,
+  label: `${p.flag} ${p.name} (${p.code})`,
+}));
 
 export default function LoginScreen({ onLoginSuccess }) {
   const [modo, setModo] = useState('login'); // 'login' | 'registro'

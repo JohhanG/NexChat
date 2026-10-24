@@ -18,18 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeContext';
-
-const PAISES = [
-  { code: '+57', label: '🇨🇴 +57' },
-  { code: '+52', label: '🇲🇽 +52' },
-  { code: '+34', label: '🇪🇸 +34' },
-  { code: '+1', label: '🇺🇸 +1' },
-  { code: '+54', label: '🇦🇷 +54' },
-  { code: '+56', label: '🇨🇱 +56' },
-  { code: '+51', label: '🇵🇪 +51' },
-  { code: '+593', label: '🇪🇨 +593' },
-  { code: '+58', label: '🇻🇪 +58' },
-];
+import { PAISES_GLOBALES } from '../lib/paises';
 
 const ICONOS_GRUPO = ['👥', '🚀', '🔥', '🏆', '💎', '🎮', '⚽', '🎵'];
 
@@ -44,18 +33,24 @@ export default function ChatsScreen({
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState('all'); // 'all' | 'unread' | 'groups'
 
-  // Menú estilo WhatsApp: null | 'menu' | 'nuevo_contacto' | 'nuevo_grupo'
+  // Menú estilo WhatsApp / Telegram: null | 'menu' | 'nuevo_contacto' | 'nuevo_grupo'
   const [vistaModal, setVistaModal] = useState(null);
 
   // Directorio de personas registradas en NexChat (Supabase)
   const [usuariosNexChat, setUsuariosNexChat] = useState([]);
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+  const [busquedaDirectorio, setBusquedaDirectorio] = useState('');
 
-  // Estado para Agregar Persona (Nuevo Contacto)
-  const [indicativo, setIndicativo] = useState('+57');
-  const [telefonoAmigo, setTelefonoAmigo] = useState('');
+  // Estado para Agregar Persona (Nuevo Contacto estilo WhatsApp & Telegram)
+  const [paisSeleccionado, setPaisSeleccionado] = useState(PAISES_GLOBALES[0]); // Colombia por defecto
+  const [modalPaises, setModalPaises] = useState(false);
+  const [busquedaPais, setBusquedaPais] = useState('');
+
   const [nombreAmigo, setNombreAmigo] = useState('');
+  const [apellidoAmigo, setApellidoAmigo] = useState('');
+  const [telefonoAmigo, setTelefonoAmigo] = useState('');
   const [buscandoAmigo, setBuscandoAmigo] = useState(false);
+  const [usuarioEncontradoLive, setUsuarioEncontradoLive] = useState(null);
 
   // Estado para Crear Nuevo Grupo
   const [nombreGrupo, setNombreGrupo] = useState('');
@@ -86,6 +81,30 @@ export default function ChatsScreen({
     }
   }, [vistaModal]);
 
+  // Verificación en vivo estilo WhatsApp mientras escribes el número de tu amigo
+  useEffect(() => {
+    const limpio = telefonoAmigo.replace(/[^0-9]/g, '');
+    if (limpio.length < 6) {
+      setUsuarioEncontradoLive(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const numCompleto = `${paisSeleccionado.code} ${limpio}`;
+        const { data } = await supabase
+          .from('nexchat_users')
+          .select('*')
+          .or(`phone.eq.${numCompleto},phone.ilike.%${limpio}%`)
+          .limit(1)
+          .maybeSingle();
+        setUsuarioEncontradoLive(data || null);
+      } catch {
+        setUsuarioEncontradoLive(null);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [telefonoAmigo, paisSeleccionado]);
+
   async function cargarDirectorioUsuarios() {
     setCargandoUsuarios(true);
     try {
@@ -93,7 +112,7 @@ export default function ChatsScreen({
         .from('nexchat_users')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(80);
       if (data) {
         setUsuariosNexChat(data.filter((u) => u.phone !== userProfile?.phone));
       }
@@ -101,35 +120,40 @@ export default function ChatsScreen({
     setCargandoUsuarios(false);
   }
 
-  // 1. Guardar Nuevo Contacto e Iniciar Chat
+  // 1. Guardar Nuevo Contacto e Iniciar Chat (Estilo WhatsApp y Telegram)
   async function handleGuardarContacto() {
     const soloDigitos = telefonoAmigo.trim();
     if (!soloDigitos || soloDigitos.length < 6) {
-      Alert.alert('Número incompleto', 'Escribe el número de celular de tu amigo.');
+      Alert.alert('Número incompleto', 'Escribe el número de celular de tu contacto.');
       return;
     }
 
     const numeroCompleto = soloDigitos.startsWith('+')
       ? soloDigitos
-      : `${indicativo} ${soloDigitos}`;
+      : `${paisSeleccionado.code} ${soloDigitos}`;
 
     setBuscandoAmigo(true);
-    let peerData = null;
-    try {
-      const { data } = await supabase
-        .from('nexchat_users')
-        .select('*')
-        .eq('phone', numeroCompleto)
-        .maybeSingle();
-      if (data) peerData = data;
-    } catch {}
+    let peerData = usuarioEncontradoLive;
+    if (!peerData) {
+      try {
+        const { data } = await supabase
+          .from('nexchat_users')
+          .select('*')
+          .eq('phone', numeroCompleto)
+          .maybeSingle();
+        if (data) peerData = data;
+      } catch {}
+    }
     setBuscandoAmigo(false);
 
-    const nombreFinal = nombreAmigo.trim() || peerData?.name || numeroCompleto;
-    onCreateDirectChat(numeroCompleto, nombreFinal, peerData);
+    const nombreCompuesto = [nombreAmigo.trim(), apellidoAmigo.trim()].filter(Boolean).join(' ');
+    const nombreFinal = nombreCompuesto || peerData?.name || numeroCompleto;
+    onCreateDirectChat(peerData?.phone || numeroCompleto, nombreFinal, peerData);
 
     setTelefonoAmigo('');
     setNombreAmigo('');
+    setApellidoAmigo('');
+    setUsuarioEncontradoLive(null);
     setVistaModal(null);
   }
 
@@ -203,6 +227,21 @@ export default function ChatsScreen({
     );
   };
 
+  const paisesFiltrados = PAISES_GLOBALES.filter((p) => {
+    if (!busquedaPais.trim()) return true;
+    const q = busquedaPais.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.code.includes(q);
+  });
+
+  const directorioFiltrado = usuariosNexChat.filter((u) => {
+    if (!busquedaDirectorio.trim()) return true;
+    const q = busquedaDirectorio.toLowerCase();
+    return (
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.phone || '').toLowerCase().includes(q)
+    );
+  });
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Barra de Búsqueda, Filtros y Botón + Nuevo */}
@@ -241,7 +280,7 @@ export default function ChatsScreen({
             style={styles.newTopBtn}
             onPress={() => setVistaModal('menu')}
           >
-            <Text style={styles.newTopBtnText}>+ Nuevo</Text>
+            <Text style={styles.newTopBtnText}>+ Añadir</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -303,10 +342,10 @@ export default function ChatsScreen({
 
       {/* Botón Flotante estilo WhatsApp */}
       <TouchableOpacity style={styles.fab} onPress={() => setVistaModal('menu')}>
-        <Ionicons name="chatbubble-ellipses" size={24} color="#111b21" />
+        <Ionicons name="person-add" size={24} color="#111b21" />
       </TouchableOpacity>
 
-      {/* PANTALLA COMPLETA ESTILO WHATSAPP: CONTACTOS, AGREGAR PERSONA Y CREAR GRUPO */}
+      {/* PANTALLA COMPLETA ESTILO WHATSAPP & TELEGRAM: CONTACTOS, AGREGAR PERSONA Y CREAR GRUPO */}
       <Modal
         visible={!!vistaModal}
         animationType="slide"
@@ -328,44 +367,38 @@ export default function ChatsScreen({
             <View style={{ flex: 1 }}>
               <Text style={styles.modalHeaderTitle}>
                 {vistaModal === 'menu'
-                  ? 'Seleccionar contacto'
+                  ? 'Contactos y Grupos'
                   : vistaModal === 'nuevo_contacto'
-                  ? 'Nuevo contacto'
-                  : 'Nuevo grupo'}
+                  ? 'Añadir nuevo contacto'
+                  : 'Crear nuevo grupo'}
               </Text>
               <Text style={styles.modalHeaderSub}>
                 {vistaModal === 'menu'
-                  ? `${usuariosNexChat.length} personas en NexChat Global`
+                  ? `${usuariosNexChat.length} contactos en NexChat • Global`
                   : vistaModal === 'nuevo_contacto'
-                  ? 'Agregar amigo por número de celular'
-                  : 'Añade participantes y foto del grupo'}
+                  ? 'Todos los países disponibles (WhatsApp / Telegram)'
+                  : 'Añade foto y participantes al grupo'}
               </Text>
             </View>
           </View>
 
-          {/* VISTA 1: MENÚ PRINCIPAL ESTILO WHATSAPP (NUEVO GRUPO / NUEVO CONTACTO / DIRECTORIO) */}
+          {/* VISTA 1: MENÚ PRINCIPAL ESTILO WHATSAPP & TELEGRAM */}
           {vistaModal === 'menu' && (
             <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 60 }}>
+              {/* Buscador Global estilo Telegram */}
+              <View style={[styles.searchBar, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 14 }]}>
+                <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.text }]}
+                  placeholder="Buscar persona por nombre o número (+57, +34, +1...)"
+                  placeholderTextColor={colors.textMuted}
+                  value={busquedaDirectorio}
+                  onChangeText={setBusquedaDirectorio}
+                />
+              </View>
+
               {/* Acciones Principales estilo WhatsApp */}
               <View style={[styles.menuBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <TouchableOpacity
-                  onPress={() => setVistaModal('nuevo_grupo')}
-                  style={styles.actionRow}
-                >
-                  <View style={[styles.greenCircleIcon, { backgroundColor: colors.primary }]}>
-                    <Ionicons name="people" size={22} color="#052e16" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.actionTitle, { color: colors.text }]}>Nuevo grupo</Text>
-                    <Text style={[styles.actionSub, { color: colors.textMuted }]}>
-                      Crea una sala grupal con varios amigos y foto de grupo
-                    </Text>
-                  </View>
-                  <Text style={[styles.chevron, { color: colors.textMuted }]}>›</Text>
-                </TouchableOpacity>
-
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
                 <TouchableOpacity
                   onPress={() => setVistaModal('nuevo_contacto')}
                   style={styles.actionRow}
@@ -376,7 +409,25 @@ export default function ChatsScreen({
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.actionTitle, { color: colors.text }]}>Nuevo contacto</Text>
                     <Text style={[styles.actionSub, { color: colors.textMuted }]}>
-                      Agregar a un amigo con su indicativo y número de celular
+                      Añadir persona con selector de todos los países del mundo
+                    </Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: colors.textMuted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                <TouchableOpacity
+                  onPress={() => setVistaModal('nuevo_grupo')}
+                  style={styles.actionRow}
+                >
+                  <View style={[styles.greenCircleIcon, { backgroundColor: colors.primary }]}>
+                    <Ionicons name="people" size={22} color="#052e16" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.actionTitle, { color: colors.text }]}>Nuevo grupo</Text>
+                    <Text style={[styles.actionSub, { color: colors.textMuted }]}>
+                      Crear sala grupal con amigos, foto de galería e íconos
                     </Text>
                   </View>
                   <Text style={[styles.chevron, { color: colors.textMuted }]}>›</Text>
@@ -385,23 +436,23 @@ export default function ChatsScreen({
 
               {/* Lista de Contactos ya registrados en NexChat */}
               <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>
-                PERSONAS EN NEXCHAT GLOBAL ({usuariosNexChat.length})
+                CONTACTOS EN NEXCHAT ({directorioFiltrado.length})
               </Text>
 
               {cargandoUsuarios ? (
                 <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
-              ) : usuariosNexChat.length === 0 ? (
+              ) : directorioFiltrado.length === 0 ? (
                 <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={{ fontSize: 28, marginBottom: 6 }}>👋</Text>
+                  <Text style={{ fontSize: 28, marginBottom: 6 }}>🌍</Text>
                   <Text style={[styles.actionTitle, { color: colors.text }]}>
-                    Agrega a tu primer amigo
+                    Añade un contacto de cualquier país
                   </Text>
                   <Text style={[styles.actionSub, { color: colors.textMuted, textAlign: 'center', marginTop: 4 }]}>
-                    Toca "Nuevo contacto" arriba para escribir el número de celular de tu amigo.
+                    Toca "Nuevo contacto" arriba para elegir el país e ingresar el número de tu amigo.
                   </Text>
                 </View>
               ) : (
-                usuariosNexChat.map((u) => (
+                directorioFiltrado.map((u) => (
                   <TouchableOpacity
                     key={u.id || u.phone}
                     onPress={() => {
@@ -429,61 +480,109 @@ export default function ChatsScreen({
             </ScrollView>
           )}
 
-          {/* VISTA 2: NUEVO CONTACTO (AGREGAR PERSONA POR NÚMERO) */}
+          {/* VISTA 2: NUEVO CONTACTO (ESTILO WHATSAPP & TELEGRAM CON TODOS LOS PAÍSES) */}
           {vistaModal === 'nuevo_contacto' && (
-            <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
               <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.formTitle, { color: colors.text }]}>
-                  👤 Datos del nuevo contacto
-                </Text>
+                {/* Fila Nombre y Apellido como en WhatsApp / Telegram */}
+                <View style={styles.inputRowIcon}>
+                  <Ionicons name="person-outline" size={22} color={colors.primary} style={{ marginTop: 18 }} />
+                  <View style={{ flex: 1, gap: 10 }}>
+                    <View>
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>NOMBRE</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                        placeholder="Nombre (ej. Juan, María...)"
+                        placeholderTextColor={colors.textMuted}
+                        value={nombreAmigo}
+                        onChangeText={setNombreAmigo}
+                      />
+                    </View>
+                    <View>
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>APELLIDO (OPCIONAL)</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                        placeholder="Apellido"
+                        placeholderTextColor={colors.textMuted}
+                        value={apellidoAmigo}
+                        onChangeText={setApellidoAmigo}
+                      />
+                    </View>
+                  </View>
+                </View>
 
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
-                  NOMBRE VISIBLE DE TU AMIGO
-                </Text>
-                <TextInput
-                  style={[styles.textInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                  placeholder="Ej. Carlos, Mamá, Amor..."
-                  placeholderTextColor={colors.textMuted}
-                  value={nombreAmigo}
-                  onChangeText={setNombreAmigo}
-                />
-
-                <Text style={[styles.fieldLabel, { color: colors.textMuted, marginTop: 16 }]}>
-                  PAÍS / INDICATIVO
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
-                  {PAISES.map((p) => (
+                {/* Selector de País estilo WhatsApp + Número de Teléfono */}
+                <View style={[styles.inputRowIcon, { marginTop: 18 }]}>
+                  <Ionicons name="call-outline" size={22} color={colors.primary} style={{ marginTop: 20 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>PAÍS / INDICATIVO GLOBAL</Text>
                     <TouchableOpacity
-                      key={p.code}
-                      onPress={() => setIndicativo(p.code)}
-                      style={[
-                        styles.countryChip,
-                        indicativo === p.code && { backgroundColor: colors.primary, borderColor: colors.primary },
-                      ]}
+                      onPress={() => {
+                        setBusquedaPais('');
+                        setModalPaises(true);
+                      }}
+                      style={[styles.countrySelectorBtn, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
                     >
-                      <Text
-                        style={[
-                          styles.countryChipText,
-                          indicativo === p.code && { color: '#052e16', fontWeight: '900' },
-                        ]}
-                      >
-                        {p.label}
+                      <Text style={{ fontSize: 22 }}>{paisSeleccionado.flag}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.countrySelectorName, { color: colors.text }]}>
+                          {paisSeleccionado.name}
+                        </Text>
+                        <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>
+                          Indicativo: {paisSeleccionado.code}
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.primary, fontWeight: '900', fontSize: 13 }}>
+                        Cambiar país ▼
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
 
-                <Text style={[styles.fieldLabel, { color: colors.textMuted, marginTop: 8 }]}>
-                  NÚMERO DE CELULAR ({indicativo})
-                </Text>
-                <TextInput
-                  style={[styles.textInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                  placeholder="310 555 8899"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="phone-pad"
-                  value={telefonoAmigo}
-                  onChangeText={setTelefonoAmigo}
-                />
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted, marginTop: 14 }]}>
+                      NÚMERO DE TELÉFONO
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => setModalPaises(true)}
+                        style={[styles.codePrefixBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                      >
+                        <Text style={{ fontSize: 16 }}>{paisSeleccionado.flag}</Text>
+                        <Text style={{ color: colors.primary, fontWeight: '900', fontSize: 15 }}>
+                          {paisSeleccionado.code}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          { flex: 1, backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border },
+                        ]}
+                        placeholder="310 555 8899"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="phone-pad"
+                        value={telefonoAmigo}
+                        onChangeText={setTelefonoAmigo}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Tarjeta en vivo si el número ya está en NexChat */}
+                {usuarioEncontradoLive && (
+                  <View style={[styles.liveMatchBox, { borderColor: colors.primary }]}>
+                    {renderAvatar(usuarioEncontradoLive.avatar, false, 44)}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '900' }}>
+                        ✅ Este número está en NexChat
+                      </Text>
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
+                        {usuarioEncontradoLive.name}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11 }} numberOfLines={1}>
+                        {usuarioEncontradoLive.bio}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 <TouchableOpacity
                   onPress={handleGuardarContacto}
@@ -491,7 +590,7 @@ export default function ChatsScreen({
                   style={[styles.submitBtn, { backgroundColor: colors.primary }]}
                 >
                   <Text style={styles.submitBtnText}>
-                    {buscandoAmigo ? 'Verificando en NexChat...' : '💬 Guardar Contacto e Iniciar Chat'}
+                    {buscandoAmigo ? 'Guardando...' : '💾 Guardar Contacto y Chatear'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -545,7 +644,7 @@ export default function ChatsScreen({
                 </Text>
                 <TextInput
                   style={[styles.textInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                  placeholder="+57 310..., +57 320..."
+                  placeholder="+57 310..., +34 600..."
                   placeholderTextColor={colors.textMuted}
                   value={numeroExtraGrupo}
                   onChangeText={setNumeroExtraGrupo}
@@ -592,6 +691,68 @@ export default function ChatsScreen({
               </View>
             </ScrollView>
           )}
+        </View>
+      </Modal>
+
+      {/* MODAL BUSCADOR DE TODOS LOS PAÍSES DEL MUNDO (ESTILO WHATSAPP & TELEGRAM) */}
+      <Modal
+        visible={modalPaises}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setModalPaises(false)}
+      >
+        <View style={[styles.fullScreenModal, { backgroundColor: colors.bg }]}>
+          <View style={[styles.modalHeader, { backgroundColor: colors.headerBg }]}>
+            <TouchableOpacity onPress={() => setModalPaises(false)} style={styles.backBtn}>
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalHeaderTitle}>Selecciona un país</Text>
+              <Text style={styles.modalHeaderSub}>
+                {PAISES_GLOBALES.length} países e indicativos internacionales
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ padding: 12, backgroundColor: colors.card, borderBottomWidth: 1, borderColor: colors.border }}>
+            <View style={[styles.searchBar, { backgroundColor: colors.inputBg }]}>
+              <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Buscar país o código (ej. Colombia, España, +52, +1...)"
+                placeholderTextColor={colors.textMuted}
+                value={busquedaPais}
+                onChangeText={setBusquedaPais}
+                autoFocus
+              />
+            </View>
+          </View>
+
+          <FlatList
+            data={paisesFiltrados}
+            keyExtractor={(item, idx) => `${item.name}_${item.code}_${idx}`}
+            renderItem={({ item }) => {
+              const activo =
+                paisSeleccionado.name === item.name && paisSeleccionado.code === item.code;
+              return (
+                <TouchableOpacity
+                  onPress={() => {
+                    setPaisSeleccionado(item);
+                    setModalPaises(false);
+                  }}
+                  style={[
+                    styles.countryListRow,
+                    { borderColor: colors.border },
+                    activo && { backgroundColor: 'rgba(16,185,129,0.12)' },
+                  ]}
+                >
+                  <Text style={{ fontSize: 26 }}>{item.flag}</Text>
+                  <Text style={[styles.countryListName, { color: colors.text }]}>{item.name}</Text>
+                  <Text style={[styles.countryListCode, { color: colors.primary }]}>{item.code}</Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
         </View>
       </Modal>
     </View>
@@ -737,7 +898,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 18,
   },
-  formTitle: { fontSize: 17, fontWeight: '900', marginBottom: 14 },
+  inputRowIcon: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
   fieldLabel: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
   textInput: {
     borderWidth: 1,
@@ -746,18 +911,36 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     fontSize: 15,
   },
-  countryChip: {
-    backgroundColor: '#202c33',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginRight: 8,
+  countrySelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2a3942',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 12,
   },
-  countryChipText: { color: '#e9edef', fontSize: 12, fontWeight: '700' },
+  countrySelectorName: { fontSize: 15, fontWeight: '800' },
+  codePrefixBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  liveMatchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(16,185,129,0.1)',
+  },
   submitBtn: {
-    marginTop: 20,
+    marginTop: 22,
     paddingVertical: 15,
     borderRadius: 14,
     alignItems: 'center',
@@ -806,4 +989,14 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 4,
   },
+  countryListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    gap: 14,
+  },
+  countryListName: { flex: 1, fontSize: 15, fontWeight: '700' },
+  countryListCode: { fontSize: 15, fontWeight: '900' },
 });
