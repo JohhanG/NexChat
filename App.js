@@ -1666,11 +1666,55 @@ function MainApp() {
   );
 }
 
+class RootErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.log('[RootErrorBoundary] Error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0B141A', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 52, marginBottom: 16 }}>💬🔒</Text>
+          <Text style={{ color: '#E9EDEF', fontSize: 22, fontWeight: '900', textAlign: 'center', marginBottom: 10 }}>
+            NexChat Global
+          </Text>
+          <Text style={{ color: '#8696A0', fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
+            Para disfrutar de las nuevas funciones de notas de voz de micrófono y llamadas con video, por favor instala la nueva APK oficial directamente desde la página web.
+          </Text>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                if (Updates && Updates.reloadAsync) {
+                  await Updates.reloadAsync();
+                }
+              } catch (e) {}
+              this.setState({ hasError: false, error: null });
+            }}
+            style={{ backgroundColor: '#00A884', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16 }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>Reintentar inicio</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <MainApp />
-    </ThemeProvider>
+    <RootErrorBoundary>
+      <ThemeProvider>
+        <MainApp />
+      </ThemeProvider>
+    </RootErrorBoundary>
   );
 }
 
