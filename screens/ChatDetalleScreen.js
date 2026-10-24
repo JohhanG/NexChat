@@ -190,14 +190,24 @@ export default function ChatDetalleScreen({
     setAudioSeconds(0);
 
     // 1. Si es audio grabado real en Base64 o URL (expo-av)
-    if (msg.mediaUri && (msg.mediaUri.startsWith('data:audio') || msg.mediaUri.startsWith('http') || msg.mediaUri.startsWith('file:'))) {
+    if (msg.mediaUri && (msg.mediaUri.startsWith('data:audio') || msg.mediaUri.startsWith('data:') || msg.mediaUri.startsWith('http') || msg.mediaUri.startsWith('file:'))) {
       try {
+        let playbackUri = msg.mediaUri;
+        if (msg.mediaUri.startsWith('data:')) {
+          const base64Data = msg.mediaUri.split(',')[1] || msg.mediaUri;
+          const tempPath = `${FileSystem.cacheDirectory}audio_${msg.id || Date.now()}.m4a`;
+          await FileSystem.writeAsStringAsync(tempPath, base64Data, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          playbackUri = tempPath;
+        }
+
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
         });
         const { sound } = await Audio.Sound.createAsync(
-          { uri: msg.mediaUri },
+          { uri: playbackUri },
           { shouldPlay: true }
         );
         soundPlayerRef.current = sound;
@@ -225,8 +235,7 @@ export default function ChatDetalleScreen({
     } else if (msg.text && !msg.text.startsWith('🎤 Nota de voz')) {
       textoParaHablar = msg.text.replace(/^🎤\s*/, '').replace(/\(\d+s\)$/, '').trim();
     } else {
-      const sender = msg.sender === 'me' ? 'Tú' : (msg.senderName || 'Tu contacto');
-      textoParaHablar = `Nota de voz de ${sender}.`;
+      textoParaHablar = 'Nota de voz de audio.';
     }
 
     try {

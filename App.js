@@ -12,6 +12,7 @@ import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import { supabase } from './lib/supabase';
 import {
   generarRoomIdPrivado,
+  extraerPeerPhoneDeRoom,
   sanitizarEntrada,
   cifrarMensajeE2EE,
   descifrarMensajeE2EE,
@@ -101,6 +102,42 @@ function MainApp() {
   const selectedChatIdRef = useRef(null);
   const realtimeChannelRef = useRef(null);
   const lastSyncTimestampRef = useRef(0);
+  const usersPresenceRef = useRef({});
+
+  useEffect(() => {
+    usersPresenceRef.current = usersPresence;
+  }, [usersPresence]);
+
+  // Auto-reparar cualquier chat 1 a 1 que por error haya quedado con el teléfono o foto propios
+  useEffect(() => {
+    if (!userProfile?.phone || !chats || chats.length === 0) return;
+    const myClean = String(userProfile.phone).replace(/[^0-9]/g, '');
+    let changed = false;
+    const repaired = chats.map((c) => {
+      if (!c.isGroup && c.id && String(c.id).startsWith('dm_')) {
+        const peerDigits = extraerPeerPhoneDeRoom(c.id, userProfile.phone);
+        if (peerDigits && peerDigits !== myClean) {
+          const cleanPeerPhone = String(c.peerPhone || '').replace(/[^0-9]/g, '');
+          const peerInfo = usersPresence[peerDigits];
+          const correctPhone = `+${peerDigits}`;
+          if (cleanPeerPhone === myClean || c.name === 'Chat Directo' || !c.peerPhone) {
+            changed = true;
+            return {
+              ...c,
+              peerPhone: correctPhone,
+              name: (peerInfo?.name && peerInfo.name !== userProfile.name) ? peerInfo.name : correctPhone,
+              avatar: (peerInfo?.avatar && peerInfo.avatar !== userProfile.avatar) ? peerInfo.avatar : (c.avatar || '👤'),
+            };
+          }
+        }
+      }
+      return c;
+    });
+    if (changed) {
+      setChats(repaired);
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(repaired)).catch(() => {});
+    }
+  }, [usersPresence, userProfile]);
 
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
@@ -644,14 +681,16 @@ function MainApp() {
 
         const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
         const hora = m.time || new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const isAudioMsg = m.type === 'audio' || (plain && String(plain).startsWith('data:audio'));
+        const isImageMsg = m.type === 'image' || (plain && String(plain).startsWith('data:image'));
         const msgObj = {
           id: m.id,
           sender: esMio ? 'me' : 'them',
           senderPhone: m.sender_phone,
           senderName: m.sender_name,
-          text: plain,
-          mediaUri: m.type === 'image' ? m.content : null,
-          mediaType: m.type !== 'text' ? m.type : null,
+          text: isAudioMsg ? '🎤 Nota de voz' : plain,
+          mediaUri: (isAudioMsg || isImageMsg) ? plain : null,
+          mediaType: isAudioMsg ? 'audio' : (isImageMsg ? 'image' : (m.type !== 'text' ? m.type : null)),
           ephemeral: !!m.expires_at,
           time: hora,
         };
@@ -680,13 +719,19 @@ function MainApp() {
             messages: nextMsgs,
           };
         } else {
-          // Crear el chat automáticamente si un amigo nos escribió
+          // Crear el chat automáticamente identificando al amigo real (no a uno mismo)
           const sinLeer = !esMio && !readMsgIdsRef.current.has(m.id) ? 1 : 0;
+          const peerDigits = extraerPeerPhoneDeRoom(roomId, userProfile.phone);
+          const peerInfo = (peerDigits && usersPresenceRef.current[peerDigits]) || null;
+          const peerPhoneFinal = peerDigits ? `+${peerDigits}` : (esMio ? 'Contacto' : m.sender_phone);
+          const peerNameFinal = (!esMio && m.sender_name) ? m.sender_name : (peerInfo?.name || peerPhoneFinal);
+          const peerAvatarFinal = peerInfo?.avatar || '👤';
+
           mapa.push({
             id: roomId,
-            name: esMio ? 'Chat Directo' : (m.sender_name || m.sender_phone),
-            peerPhone: m.sender_phone,
-            avatar: '👤',
+            name: peerNameFinal,
+            peerPhone: peerPhoneFinal,
+            avatar: peerAvatarFinal,
             isGroup: String(roomId).startsWith('group_'),
             online: true,
             unread: sinLeer,
@@ -713,14 +758,16 @@ function MainApp() {
 
     const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
     const hora = m.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isAudioMsg = m.type === 'audio' || (plain && String(plain).startsWith('data:audio'));
+    const isImageMsg = m.type === 'image' || (plain && String(plain).startsWith('data:image'));
     const msgObj = {
       id: m.id,
       sender: 'them',
       senderPhone: m.sender_phone,
       senderName: m.sender_name,
-      text: plain,
-      mediaUri: m.type === 'image' ? m.content : null,
-      mediaType: m.type !== 'text' ? m.type : null,
+      text: isAudioMsg ? '🎤 Nota de voz' : plain,
+      mediaUri: (isAudioMsg || isImageMsg) ? plain : null,
+      mediaType: isAudioMsg ? 'audio' : (isImageMsg ? 'image' : (m.type !== 'text' ? m.type : null)),
       ephemeral: !!m.expires_at,
       time: hora,
     };
@@ -746,12 +793,18 @@ function MainApp() {
         AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
         return updated;
       } else {
+        const peerDigits = extraerPeerPhoneDeRoom(roomId, userProfile.phone);
+        const peerInfo = (peerDigits && usersPresenceRef.current[peerDigits]) || null;
+        const peerPhoneFinal = peerDigits ? `+${peerDigits}` : m.sender_phone;
+        const peerNameFinal = m.sender_name || peerInfo?.name || peerPhoneFinal;
+        const peerAvatarFinal = peerInfo?.avatar || '👤';
+
         const updated = [
           {
             id: roomId,
-            name: m.sender_name || m.sender_phone,
-            peerPhone: m.sender_phone,
-            avatar: '👤',
+            name: peerNameFinal,
+            peerPhone: peerPhoneFinal,
+            avatar: peerAvatarFinal,
             isGroup: String(roomId).startsWith('group_'),
             online: true,
             unread: abiertoAhora ? 0 : 1,
@@ -929,7 +982,8 @@ function MainApp() {
         mediaType === 'image' || mediaType === 'audio' || mediaType === 'file'
           ? mediaType
           : 'text';
-      const cipher = cifrarMensajeE2EE(mediaType === 'image' ? mediaUri : cleanText, targetRoomId);
+      const payloadContent = (mediaType === 'image' || mediaType === 'audio') ? mediaUri : cleanText;
+      const cipher = cifrarMensajeE2EE(payloadContent, targetRoomId);
       const rowPayload = {
         id: msgId,
         chat_id: targetRoomId,
