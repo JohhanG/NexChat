@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
-  Image, KeyboardAvoidingView, Platform, Modal, Alert, StatusBar
+  Image, KeyboardAvoidingView, Platform, Modal, Alert, StatusBar, BackHandler
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,6 +75,30 @@ export default function ChatDetalleScreen({
   useEffect(() => {
     setEditedName(chat.name || '');
   }, [chat.name]);
+
+  // Permitir volver atrás deslizando el borde o con el botón Atrás de Android sin cerrar la app
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (infoModal) {
+        setInfoModal(false);
+        return true;
+      }
+      if (selectedMessage) {
+        setSelectedMessage(null);
+        return true;
+      }
+      if (showPicker) {
+        setShowPicker(false);
+        return true;
+      }
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [infoModal, selectedMessage, showPicker, onBack]);
 
   useEffect(() => {
     let interval;

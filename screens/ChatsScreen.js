@@ -677,7 +677,16 @@ export default function ChatsScreen({
         visible={!!vistaModal}
         animationType="slide"
         transparent={false}
-        onRequestClose={() => setVistaModal(null)}
+        onRequestClose={() => {
+          if (vistaModal === 'nuevo_contacto' && volverAGrupoTrasContacto) {
+            setVolverAGrupoTrasContacto(false);
+            setVistaModal('nuevo_grupo');
+          } else if (vistaModal === 'menu') {
+            setVistaModal(null);
+          } else {
+            setVistaModal('menu');
+          }
+        }}
       >
         <View style={[styles.fullScreenModal, { backgroundColor: colors.bg }]}>
           {/* HEADER DEL MODAL */}

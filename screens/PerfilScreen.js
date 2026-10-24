@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, BackHandler
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,18 @@ export default function PerfilScreen({
   const [bio, setBio] = useState(userProfile.bio || '');
   const [avatar, setAvatar] = useState(userProfile.avatar || '😎');
   const [saving, setSaving] = useState(false);
+
+  // Interceptar gesto de deslizar atrás en Android cuando estamos en un submenú del Perfil
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (subMenu !== null) {
+        setSubMenu(null);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [subMenu]);
 
   const myFingerprint = generarHuellaSeguridad(userProfile.phone, 'NEXCHAT_GLOBAL_KEY');
   const bloquesHuella = myFingerprint.split(/\s+/).filter(Boolean);

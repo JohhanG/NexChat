@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, StatusBar,
-  SafeAreaView, Modal, TextInput, Alert, Platform, AppState
+  SafeAreaView, Modal, TextInput, Alert, Platform, AppState, BackHandler
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
@@ -188,6 +188,26 @@ function MainApp() {
       AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(chats)).catch(() => {});
     }
   }, [chats, userProfile, loadingSession]);
+
+  // Navegación con gesto/botón de volver atrás de Android (evita que se salga de la app)
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (activeCall) {
+        setActiveCall(null);
+        return true;
+      }
+      if (selectedChatId) {
+        setSelectedChatId(null);
+        return true;
+      }
+      if (activeTab !== 'chats') {
+        setActiveTab('chats');
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [activeCall, selectedChatId, activeTab]);
 
   // Cronómetro de llamada activa
   useEffect(() => {
