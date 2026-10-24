@@ -701,18 +701,6 @@ function MainApp() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.headerBg} />
 
-      {/* BANNER OTA SI HAY ACTUALIZACIÓN */}
-      {otaAvailable && (
-        <TouchableOpacity
-          onPress={() => Updates.reloadAsync()}
-          style={styles.otaBanner}
-        >
-          <Text style={styles.otaBannerText}>
-            🚀 Nueva actualización descargada. Toca aquí para aplicar los cambios al instante.
-          </Text>
-        </TouchableOpacity>
-      )}
-
       {/* SI HAY UN CHAT ABIERTO, MOSTRAR PANTALLA DE CONVERSACIÓN */}
       {selectedChat ? (
         <ChatDetalleScreen
@@ -748,6 +736,27 @@ function MainApp() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* TARJETA DE ACTUALIZACIÓN OTA (DEBAJO DEL ENCABEZADO PARA NO TAPAR LA HORA) */}
+          {otaAvailable && (
+            <View style={styles.otaBannerWrap}>
+              <TouchableOpacity
+                onPress={() => Updates.reloadAsync()}
+                style={styles.otaBannerCard}
+              >
+                <Text style={{ fontSize: 20 }}>🚀</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.otaBannerTitle}>Nueva versión lista para aplicar</Text>
+                  <Text style={styles.otaBannerSub}>
+                    Toca aquí para actualizar tu app al instante
+                  </Text>
+                </View>
+                <View style={styles.otaApplyPill}>
+                  <Text style={styles.otaApplyText}>Actualizar</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* CONTENIDO DE PESTAÑA ACTIVA */}
           <View style={{ flex: 1 }}>
@@ -949,13 +958,32 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   tabLabel: { fontSize: 11 },
-  otaBanner: {
-    backgroundColor: '#10B981',
-    paddingVertical: 8,
+  otaBannerWrap: {
     paddingHorizontal: 14,
-    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
   },
-  otaBannerText: { color: '#052E16', fontSize: 12, fontWeight: '900' },
+  otaBannerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#065F46',
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    borderRadius: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    gap: 10,
+    elevation: 3,
+  },
+  otaBannerTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  otaBannerSub: { color: '#A7F3D0', fontSize: 11, marginTop: 1 },
+  otaApplyPill: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+  },
+  otaApplyText: { color: '#052E16', fontSize: 12, fontWeight: '900' },
   callModal: {
     flex: 1,
     backgroundColor: '#071E18',
