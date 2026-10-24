@@ -761,16 +761,16 @@ export default function ChatsScreen({
                 {vistaModal === 'menu'
                   ? `${contactosUnificados.length} contactos disponibles en NexChat`
                   : vistaModal === 'nuevo_contacto'
-                  ? 'Todos los países disponibles (WhatsApp / Telegram)'
+                  ? 'Directorio internacional con todos los países'
                   : `${miembrosSeleccionados.length} participantes seleccionados`}
               </Text>
             </View>
           </View>
 
-          {/* VISTA 1: MENÚ PRINCIPAL ESTILO WHATSAPP & TELEGRAM */}
+          {/* VISTA 1: MENÚ PRINCIPAL DE CONTACTOS Y GRUPOS */}
           {vistaModal === 'menu' && (
             <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 60 }}>
-              {/* Buscador Global estilo Telegram */}
+              {/* Buscador Global */}
               <View style={[styles.searchBar, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 14 }]}>
                 <Ionicons name="search" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
                 <TextInput
@@ -782,7 +782,7 @@ export default function ChatsScreen({
                 />
               </View>
 
-              {/* Acciones Principales estilo WhatsApp */}
+              {/* Acciones Principales */}
               <View style={[styles.menuBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <TouchableOpacity
                   onPress={() => {
@@ -815,7 +815,7 @@ export default function ChatsScreen({
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.actionTitle, { color: colors.text }]}>Nuevo grupo</Text>
                     <Text style={[styles.actionSub, { color: colors.textMuted }]}>
-                      Selecciona contactos de tu lista con un toque (estilo WhatsApp)
+                      Selecciona contactos de tu lista con un solo toque
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
