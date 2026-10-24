@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, StatusBar,
-  SafeAreaView, Modal, TextInput, Alert, Platform, AppState, BackHandler
+  SafeAreaView, Modal, TextInput, Alert, Platform, AppState, BackHandler, Image
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
@@ -81,6 +81,10 @@ function MainApp() {
   const [activeCall, setActiveCall] = useState(null);
   const [callSeconds, setCallSeconds] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [isSharingScreen, setIsSharingScreen] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
 
   // Bloqueo de pantalla por PIN
   const [isLocked, setIsLocked] = useState(false);
@@ -255,9 +259,16 @@ function MainApp() {
   useEffect(() => {
     let timer;
     if (activeCall) {
+      setIsCameraOn(activeCall.type === 'video');
+      setIsSharingScreen(false);
+      setIsMuted(false);
+      setIsSpeakerOn(true);
+      setIsFrontCamera(true);
       timer = setInterval(() => setCallSeconds((s) => s + 1), 1000);
     } else {
       setCallSeconds(0);
+      setIsSharingScreen(false);
+      setIsCameraOn(false);
     }
     return () => clearInterval(timer);
   }, [activeCall]);
@@ -1422,34 +1433,201 @@ function MainApp() {
         </>
       )}
 
-      {/* MODAL DE LLAMADA EN VIVO */}
+      {/* MODAL DE LLAMADA EN VIVO MEJORADO */}
       <Modal visible={!!activeCall} animationType="slide" transparent>
         {activeCall && (
           <View style={styles.callModal}>
-            <Text style={styles.callEncryptedBadge}>🔒 CIFRADO DE EXTREMO A EXTREMO (SHA-256)</Text>
-            <View style={styles.callAvatarBig}>
-              <Text style={{ fontSize: 64 }}>{activeCall.avatar || '👤'}</Text>
+            {/* ENCABEZADO SUPERIOR DE SEGURIDAD Y TIEMPO */}
+            <View style={styles.callHeader}>
+              <View style={styles.callEncryptedBadge}>
+                <Text style={styles.callEncryptedBadgeText}>🔒 CIFRADO DE EXTREMO A EXTREMO (SHA-256)</Text>
+              </View>
+              <Text style={styles.callStatusSub}>
+                {isSharingScreen
+                  ? '💻 Transmitiendo pantalla en vivo'
+                  : isCameraOn
+                  ? `📹 Videollamada HD • ${isFrontCamera ? 'Cámara Frontal' : 'Cámara Trasera'}`
+                  : '📞 Llamada de voz de alta fidelidad'}
+              </Text>
+              <View style={styles.callTimerBadge}>
+                <Text style={styles.callTimerText}>
+                  ⏱️ {Math.floor(callSeconds / 60).toString().padStart(2, '0')}:
+                  {(callSeconds % 60).toString().padStart(2, '0')}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.callPeerName}>{activeCall.name}</Text>
-            <Text style={styles.callTimer}>
-              {activeCall.type === 'video' ? '📹 Videollamada en curso • ' : '📞 Llamada de voz • '}
-              {Math.floor(callSeconds / 60).toString().padStart(2, '0')}:
-              {(callSeconds % 60).toString().padStart(2, '0')}
-            </Text>
 
-            <View style={styles.callControlsRow}>
-              <TouchableOpacity
-                onPress={() => setIsMuted(!isMuted)}
-                style={[styles.callControlBtn, isMuted && { backgroundColor: '#F59E0B' }]}
-              >
-                <Text style={{ fontSize: 24 }}>{isMuted ? '🔇' : '🎙️'}</Text>
-              </TouchableOpacity>
+            {/* ÁREA CENTRAL PRINCIPAL: PANTALLA COMPARTIDA / CÁMARA / AUDIO */}
+            <View style={styles.callCenterArea}>
+              {isSharingScreen ? (
+                /* VISTA DE PANTALLA COMPARTIDA */
+                <View style={styles.screenShareCard}>
+                  <View style={styles.screenShareGlow}>
+                    <Text style={{ fontSize: 52 }}>💻</Text>
+                    <View style={styles.screenShareLiveTag}>
+                      <View style={styles.livePulseDot} />
+                      <Text style={styles.screenShareLiveText}>EN VIVO • COMPARTIENDO PANTALLA</Text>
+                    </View>
+                    <Text style={styles.screenShareTitle}>Transmitiendo tu pantalla</Text>
+                    <Text style={styles.screenShareDesc}>
+                      {activeCall.name} está viendo todo lo que muestras en tu celular en tiempo real con alta resolución.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setIsSharingScreen(false)}
+                      style={styles.stopScreenBtn}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.stopScreenBtnText}>⏹️ Detener presentación</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : isCameraOn ? (
+                /* VISTA DE CÁMARA ACTIVA */
+                <View style={styles.videoStageCard}>
+                  <View style={styles.videoStreamOverlay}>
+                    <View style={styles.cameraLiveBadge}>
+                      <View style={styles.livePulseDot} />
+                      <Text style={styles.cameraLiveText}>
+                        CAM HD • {isFrontCamera ? 'FRONTAL' : 'POSTERIOR'}
+                      </Text>
+                    </View>
 
+                    <TouchableOpacity
+                      onPress={() => setIsFrontCamera(!isFrontCamera)}
+                      style={styles.quickFlipBtn}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 18 }}>🔄</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Simulación visual de streaming de cámara / avatar del usuario */}
+                  <View style={styles.cameraFeedPlaceholder}>
+                    <View style={styles.cameraFeedAvatarCircle}>
+                      {activeCall.avatar && (activeCall.avatar.startsWith('http') || activeCall.avatar.startsWith('data:')) ? (
+                        <Image source={{ uri: activeCall.avatar }} style={styles.cameraAvatarImg} />
+                      ) : (
+                        <Text style={{ fontSize: 52 }}>{activeCall.avatar || '👤'}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.cameraFeedPeer}>{activeCall.name}</Text>
+                    <Text style={styles.cameraFeedSub}>Video cifrado en tiempo real</Text>
+                  </View>
+                </View>
+              ) : (
+                /* VISTA DE AUDIO ÚNICAMENTE (LLAMADA DE VOZ) */
+                <View style={styles.audioStage}>
+                  <View style={styles.audioRippleRing}>
+                    <View style={styles.callAvatarBig}>
+                      {activeCall.avatar && (activeCall.avatar.startsWith('http') || activeCall.avatar.startsWith('data:')) ? (
+                        <Image source={{ uri: activeCall.avatar }} style={styles.callAvatarImg} />
+                      ) : (
+                        <Text style={{ fontSize: 64 }}>{activeCall.avatar || '👤'}</Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={styles.callPeerName}>{activeCall.name}</Text>
+                  <Text style={styles.callPeerPhone}>{activeCall.peerPhone || 'NexChat Usuario'}</Text>
+                  <View style={styles.audioWavePill}>
+                    <Text style={styles.audioWaveText}>🎙️ Conexión de voz ultra-clara</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* AVISO RÁPIDO DE MICRÓFONO SILENCIADO */}
+              {isMuted && (
+                <View style={styles.mutedNoticePill}>
+                  <Text style={styles.mutedNoticeText}>🔇 Tu micrófono está silenciado</Text>
+                </View>
+              )}
+            </View>
+
+            {/* BARRA DE HERRAMIENTAS Y CONTROLES INFERIOR */}
+            <View style={styles.callControlsContainer}>
+              <View style={styles.callControlsGrid}>
+                {/* 1. MICRÓFONO */}
+                <TouchableOpacity
+                  onPress={() => setIsMuted(!isMuted)}
+                  style={styles.callBtnWrap}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.callBtnCircle, isMuted ? styles.callBtnMuted : styles.callBtnNormal]}>
+                    <Text style={{ fontSize: 22 }}>{isMuted ? '🔇' : '🎙️'}</Text>
+                  </View>
+                  <Text style={styles.callBtnLabel}>{isMuted ? 'Silenciado' : 'Micrófono'}</Text>
+                </TouchableOpacity>
+
+                {/* 2. CÁMARA */}
+                <TouchableOpacity
+                  onPress={() => {
+                    const nextCam = !isCameraOn;
+                    setIsCameraOn(nextCam);
+                  }}
+                  style={styles.callBtnWrap}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.callBtnCircle, isCameraOn ? styles.callBtnCamActive : styles.callBtnNormal]}>
+                    <Text style={{ fontSize: 22 }}>{isCameraOn ? '📹' : '📷'}</Text>
+                  </View>
+                  <Text style={styles.callBtnLabel}>{isCameraOn ? 'Cám. Activa' : 'Prender Cám.'}</Text>
+                </TouchableOpacity>
+
+                {/* 3. GIRAR CÁMARA (FRONTAL / TRASERA) */}
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!isCameraOn) {
+                      setIsCameraOn(true);
+                      setIsFrontCamera(false);
+                    } else {
+                      setIsFrontCamera(!isFrontCamera);
+                    }
+                  }}
+                  style={styles.callBtnWrap}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.callBtnCircle, styles.callBtnNormal]}>
+                    <Text style={{ fontSize: 22 }}>🔄</Text>
+                  </View>
+                  <Text style={styles.callBtnLabel}>{isFrontCamera ? 'Girar Cám.' : 'Frontal'}</Text>
+                </TouchableOpacity>
+
+                {/* 4. PRESENTAR PANTALLA */}
+                <TouchableOpacity
+                  onPress={() => setIsSharingScreen(!isSharingScreen)}
+                  style={styles.callBtnWrap}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.callBtnCircle, isSharingScreen ? styles.callBtnScreenActive : styles.callBtnNormal]}>
+                    <Text style={{ fontSize: 22 }}>{isSharingScreen ? '📱' : '💻'}</Text>
+                  </View>
+                  <Text style={styles.callBtnLabel}>{isSharingScreen ? 'Presentando' : 'Pantalla'}</Text>
+                </TouchableOpacity>
+
+                {/* 5. ALTAVOZ */}
+                <TouchableOpacity
+                  onPress={() => setIsSpeakerOn(!isSpeakerOn)}
+                  style={styles.callBtnWrap}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.callBtnCircle, isSpeakerOn ? styles.callBtnSpeakerActive : styles.callBtnNormal]}>
+                    <Text style={{ fontSize: 22 }}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
+                  </View>
+                  <Text style={styles.callBtnLabel}>{isSpeakerOn ? 'Altavoz' : 'Auricular'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* BOTÓN COLGAR DESTACADO */}
               <TouchableOpacity
-                onPress={() => setActiveCall(null)}
-                style={[styles.callControlBtn, { backgroundColor: '#EF4444', width: 70, height: 70, borderRadius: 35 }]}
+                onPress={() => {
+                  setActiveCall(null);
+                  setIsSharingScreen(false);
+                  setIsCameraOn(false);
+                }}
+                style={styles.callHangUpBtn}
+                activeOpacity={0.8}
               >
                 <Text style={{ fontSize: 28 }}>📵</Text>
+                <Text style={styles.callHangUpText}>Finalizar Llamada</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1574,45 +1752,346 @@ const styles = StyleSheet.create({
   otaApplyText: { color: '#052E16', fontSize: 12, fontWeight: '900' },
   callModal: {
     flex: 1,
-    backgroundColor: '#071E18',
-    alignItems: 'center',
+    backgroundColor: '#071A14',
     justifyContent: 'space-between',
-    paddingVertical: 60,
-    paddingHorizontal: 24,
+    paddingVertical: 44,
+    paddingHorizontal: 20,
+  },
+  callHeader: {
+    alignItems: 'center',
+    width: '100%',
+    gap: 6,
   },
   callEncryptedBadge: {
+    backgroundColor: 'rgba(16,185,129,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.35)',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  callEncryptedBadgeText: {
     color: '#6EE7B7',
     fontSize: 11,
     fontWeight: '800',
-    backgroundColor: 'rgba(16,185,129,0.18)',
+    letterSpacing: 0.5,
+  },
+  callStatusSub: {
+    color: '#A7F3D0',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  callTimerBadge: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  callTimerText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  callCenterArea: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: 14,
+  },
+  screenShareCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#0B253A',
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#0284C7',
+    padding: 22,
+    alignItems: 'center',
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  screenShareGlow: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  screenShareLiveTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(2,132,199,0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  livePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#38BDF8',
+  },
+  screenShareLiveText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  screenShareTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  screenShareDesc: {
+    color: '#93C5FD',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  stopScreenBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginTop: 16,
+  },
+  stopScreenBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  videoStageCard: {
+    width: '100%',
+    maxWidth: 360,
+    height: 330,
+    backgroundColor: '#03140F',
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#10B981',
+    overflow: 'hidden',
+    justifyContent: 'space-between',
+    padding: 14,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  videoStreamOverlay: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  cameraLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(16,185,129,0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  cameraLiveText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  quickFlipBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraFeedPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  cameraFeedAvatarCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#064E3B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#34D399',
+    overflow: 'hidden',
+  },
+  cameraAvatarImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  cameraFeedPeer: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  cameraFeedSub: {
+    color: '#6EE7B7',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  audioStage: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  audioRippleRing: {
+    width: 144,
+    height: 144,
+    borderRadius: 72,
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderWidth: 2,
+    borderColor: 'rgba(16,185,129,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
   callAvatarBig: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#065F46',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: '#10B981',
+    overflow: 'hidden',
   },
-  callPeerName: { color: '#FFFFFF', fontSize: 28, fontWeight: '900' },
-  callTimer: { color: '#A7F3D0', fontSize: 15, fontWeight: '700' },
-  callControlsRow: {
-    flexDirection: 'row',
+  callAvatarImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  callPeerName: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  callPeerPhone: {
+    color: '#A7F3D0',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  audioWavePill: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 14,
+  },
+  audioWaveText: {
+    color: '#6EE7B7',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  mutedNoticePill: {
+    position: 'absolute',
+    bottom: -8,
+    backgroundColor: '#D97706',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  mutedNoticeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  callControlsContainer: {
+    width: '100%',
     alignItems: 'center',
-    gap: 28,
+    gap: 16,
   },
-  callControlBtn: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+  callControlsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+    flexWrap: 'wrap',
+  },
+  callBtnWrap: {
+    alignItems: 'center',
+    gap: 4,
+    width: 60,
+  },
+  callBtnCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+  },
+  callBtnNormal: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  callBtnMuted: {
+    backgroundColor: '#D97706',
+    borderColor: '#F59E0B',
+  },
+  callBtnCamActive: {
+    backgroundColor: '#059669',
+    borderColor: '#34D399',
+  },
+  callBtnScreenActive: {
+    backgroundColor: '#0284C7',
+    borderColor: '#38BDF8',
+  },
+  callBtnSpeakerActive: {
+    backgroundColor: 'rgba(16,185,129,0.3)',
+    borderColor: '#10B981',
+  },
+  callBtnLabel: {
+    color: '#E5E7EB',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  callHangUpBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#DC2626',
+    width: '100%',
+    maxWidth: 280,
+    paddingVertical: 13,
+    borderRadius: 28,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  callHangUpText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.3,
   },
   lockOverlay: {
     flex: 1,
