@@ -74,6 +74,7 @@ export default function ChatsScreen({
   const [busquedaMiembroGrupo, setBusquedaMiembroGrupo] = useState('');
 
   const listaSegura = Array.isArray(chats) ? chats : [];
+  const totalSinLeer = listaSegura.reduce((acc, c) => acc + (Number(c?.unread) || 0), 0);
 
   const chatsFiltrados = listaSegura.filter((c) => {
     if (!c) return false;
@@ -452,18 +453,45 @@ export default function ChatsScreen({
         <View style={styles.filterRow}>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {[
-              { id: 'all', label: 'Todos' },
-              { id: 'unread', label: 'No leídos' },
-              { id: 'groups', label: 'Grupos' },
+              { id: 'all', label: 'Todos', count: 0 },
+              { id: 'unread', label: 'No leídos', count: totalSinLeer },
+              { id: 'groups', label: 'Grupos', count: 0 },
             ].map((f) => (
               <TouchableOpacity
                 key={f.id}
-                style={[styles.filterPill, filtro === f.id && styles.filterPillActive]}
+                style={[
+                  styles.filterPill,
+                  filtro === f.id && styles.filterPillActive,
+                  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+                ]}
                 onPress={() => setFiltro(f.id)}
               >
                 <Text style={[styles.filterText, filtro === f.id && styles.filterTextActive]}>
                   {f.label}
                 </Text>
+                {f.count > 0 && (
+                  <View
+                    style={{
+                      backgroundColor: filtro === f.id ? '#FFFFFF' : '#00A884',
+                      minWidth: 17,
+                      height: 17,
+                      borderRadius: 8.5,
+                      paddingHorizontal: 4,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: filtro === f.id ? '#00A884' : '#FFFFFF',
+                        fontSize: 10,
+                        fontWeight: '900',
+                      }}
+                    >
+                      {f.count}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -576,12 +604,27 @@ export default function ChatsScreen({
                 </View>
 
                 <View style={[styles.rowBetween, { marginTop: 3 }]}>
-                  <Text style={[styles.previewText, { color: colors.textMuted }]} numberOfLines={1}>
-                    {vistaPrevia}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, gap: 4 }}>
+                    {ultimo && (ultimo.sender === 'me' || ultimo.senderPhone === userProfile?.phone) && (
+                      <Ionicons name="checkmark-done" size={15} color="#34B7F1" />
+                    )}
+                    <Text
+                      style={[
+                        styles.previewText,
+                        {
+                          color: item.unread > 0 ? colors.text : colors.textMuted,
+                          fontWeight: item.unread > 0 ? '800' : '500',
+                          marginRight: 0,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {vistaPrevia}
+                    </Text>
+                  </View>
                   {item.unread > 0 && (
                     <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{item.unread}</Text>
+                      <Text style={styles.badgeText}>{item.unread > 99 ? '99+' : item.unread}</Text>
                     </View>
                   )}
                 </View>

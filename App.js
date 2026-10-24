@@ -92,6 +92,36 @@ function MainApp() {
   // Registro persistente de mensajes y chats eliminados para que nunca reaparezcan al recargar
   const deletedMsgIdsRef = useRef(new Set());
   const clearedChatsRef = useRef({});
+  const readMsgIdsRef = useRef(new Set(['welcome_1', 'welcome_2', 'official_welcome_msg']));
+  const selectedChatIdRef = useRef(null);
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+    if (selectedChatId) {
+      setChats((prev) => {
+        let changed = false;
+        const updated = prev.map((c) => {
+          if (c.id === selectedChatId) {
+            (c.messages || []).forEach((m) => readMsgIdsRef.current.add(m.id));
+            if (c.unread > 0) changed = true;
+            return { ...c, unread: 0 };
+          }
+          return c;
+        });
+        AsyncStorage.setItem(
+          '@nexchat_read_msgs_v3',
+          JSON.stringify(Array.from(readMsgIdsRef.current))
+        ).catch(() => {});
+        return changed ? updated : prev;
+      });
+    }
+  }, [selectedChatId]);
+
+  const persistReadMsgIds = async (idsSet) => {
+    try {
+      await AsyncStorage.setItem('@nexchat_read_msgs_v3', JSON.stringify(Array.from(idsSet)));
+    } catch (e) {}
+  };
 
   const persistDeletedMsgIds = async (idsSet) => {
     try {
@@ -115,13 +145,22 @@ function MainApp() {
           savedCalls,
           savedDeletedMsgs,
           savedClearedChats,
+          savedReadMsgs,
         ] = await Promise.all([
           AsyncStorage.getItem('@nexchat_user_v3'),
           AsyncStorage.getItem('@nexchat_chats_v3'),
           AsyncStorage.getItem('@nexchat_calls_v3'),
           AsyncStorage.getItem('@nexchat_deleted_msgs_v3'),
           AsyncStorage.getItem('@nexchat_cleared_chats_v3'),
+          AsyncStorage.getItem('@nexchat_read_msgs_v3'),
         ]);
+
+        if (savedReadMsgs) {
+          const parsedRead = JSON.parse(savedReadMsgs);
+          if (Array.isArray(parsedRead)) {
+            parsedRead.forEach((id) => readMsgIdsRef.current.add(id));
+          }
+        }
 
         if (savedDeletedMsgs) {
           const parsedDel = JSON.parse(savedDeletedMsgs);
@@ -228,10 +267,11 @@ function MainApp() {
 
     const cargarDatosNube = async () => {
       try {
-        // Asegurar que la lista de eliminados esté cargada antes de sincronizar con la nube
-        const [rawDelMsgs, rawClearedChats] = await Promise.all([
+        // Asegurar que la lista de eliminados y leídos esté cargada antes de sincronizar con la nube
+        const [rawDelMsgs, rawClearedChats, rawReadMsgs] = await Promise.all([
           AsyncStorage.getItem('@nexchat_deleted_msgs_v3'),
           AsyncStorage.getItem('@nexchat_cleared_chats_v3'),
+          AsyncStorage.getItem('@nexchat_read_msgs_v3'),
         ]);
         if (rawDelMsgs) {
           const parsedDel = JSON.parse(rawDelMsgs);
@@ -243,6 +283,12 @@ function MainApp() {
           const parsedCleared = JSON.parse(rawClearedChats);
           if (parsedCleared && typeof parsedCleared === 'object') {
             clearedChatsRef.current = { ...clearedChatsRef.current, ...parsedCleared };
+          }
+        }
+        if (rawReadMsgs) {
+          const parsedRead = JSON.parse(rawReadMsgs);
+          if (Array.isArray(parsedRead)) {
+            parsedRead.forEach((id) => readMsgIdsRef.current.add(id));
           }
         }
 
@@ -443,11 +489,16 @@ function MainApp() {
         if (clearedTs && m.timestamp && Number(m.timestamp) <= Number(clearedTs)) return;
         if (String(m.content || '').includes('Este mensaje fue eliminado')) return;
 
+        const esMio = m.sender_phone === userProfile.phone;
+        if (esMio || selectedChatIdRef.current === roomId) {
+          readMsgIdsRef.current.add(m.id);
+        }
+
         const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
         const hora = m.time || new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const msgObj = {
           id: m.id,
-          sender: m.sender_phone === userProfile.phone ? 'me' : 'them',
+          sender: esMio ? 'me' : 'them',
           senderPhone: m.sender_phone,
           senderName: m.sender_name,
           text: plain,
@@ -460,26 +511,42 @@ function MainApp() {
         const idx = mapa.findIndex((c) => c.id === roomId);
         if (idx >= 0) {
           const yaExiste = (mapa[idx].messages || []).some((x) => x.id === m.id);
-          if (!yaExiste) {
-            mapa[idx] = {
-              ...mapa[idx],
-              messages: [...(mapa[idx].messages || []), msgObj],
-            };
-          }
+          const nextMsgs = yaExiste
+            ? mapa[idx].messages || []
+            : [...(mapa[idx].messages || []), msgObj];
+
+          const sinLeer =
+            selectedChatIdRef.current === roomId
+              ? 0
+              : nextMsgs.filter(
+                  (x) =>
+                    x.sender === 'them' &&
+                    !readMsgIdsRef.current.has(x.id) &&
+                    x.id !== 'welcome_1' &&
+                    x.id !== 'welcome_2'
+                ).length;
+
+          mapa[idx] = {
+            ...mapa[idx],
+            unread: sinLeer,
+            messages: nextMsgs,
+          };
         } else {
           // Crear el chat automáticamente si un amigo nos escribió
+          const sinLeer = !esMio && !readMsgIdsRef.current.has(m.id) ? 1 : 0;
           mapa.push({
             id: roomId,
-            name: m.sender_phone === userProfile.phone ? 'Chat Directo' : (m.sender_name || m.sender_phone),
+            name: esMio ? 'Chat Directo' : (m.sender_name || m.sender_phone),
             peerPhone: m.sender_phone,
             avatar: '👤',
             isGroup: String(roomId).startsWith('group_'),
             online: true,
-            unread: 1,
+            unread: sinLeer,
             messages: [msgObj],
           });
         }
       });
+      persistReadMsgIds(readMsgIdsRef.current);
       AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(mapa)).catch(() => {});
       return mapa;
     });
@@ -501,18 +568,28 @@ function MainApp() {
       time: hora,
     };
 
+    const abiertoAhora = selectedChatIdRef.current === roomId;
+    if (abiertoAhora) {
+      readMsgIdsRef.current.add(m.id);
+      persistReadMsgIds(readMsgIdsRef.current);
+    }
+
     setChats((prev) => {
       const idx = prev.findIndex((c) => c.id === roomId);
       if (idx >= 0) {
         const updated = [...prev];
+        const nextMsgs = (updated[idx].messages || []).some((x) => x.id === m.id)
+          ? updated[idx].messages
+          : [...(updated[idx].messages || []), msgObj];
         updated[idx] = {
           ...updated[idx],
-          unread: selectedChatId === roomId ? 0 : (updated[idx].unread || 0) + 1,
-          messages: [...(updated[idx].messages || []), msgObj],
+          unread: abiertoAhora ? 0 : (updated[idx].unread || 0) + 1,
+          messages: nextMsgs,
         };
+        AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
         return updated;
       } else {
-        return [
+        const updated = [
           {
             id: roomId,
             name: m.sender_name || m.sender_phone,
@@ -520,11 +597,13 @@ function MainApp() {
             avatar: '👤',
             isGroup: String(roomId).startsWith('group_'),
             online: true,
-            unread: 1,
+            unread: abiertoAhora ? 0 : 1,
             messages: [msgObj],
           },
           ...prev,
         ];
+        AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+        return updated;
       }
     });
 
@@ -969,6 +1048,11 @@ function MainApp() {
   }
 
   const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const totalUnreadMessages = chats.reduce((acc, c) => acc + (Number(c?.unread) || 0), 0);
+
+  if (Platform.OS !== 'web') {
+    Notifications.setBadgeCountAsync(totalUnreadMessages).catch(() => {});
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -1085,13 +1169,13 @@ function MainApp() {
             )}
           </View>
 
-          {/* BARRA DE NAVEGACIÓN INFERIOR (4 PESTAÑAS CON ICONOS VECTORIALES) */}
+          {/* BARRA DE NAVEGACIÓN INFERIOR (4 PESTAÑAS CON ICONOS VECTORIALES Y CONTADOR DE MENSAJES) */}
           <View style={[styles.tabBar, { backgroundColor: colors.tabBar, borderTopColor: colors.border }]}>
             {[
-              { id: 'chats', label: 'Chats', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
-              { id: 'estados', label: 'Estados', icon: 'aperture-outline', activeIcon: 'aperture' },
-              { id: 'llamadas', label: 'Llamadas', icon: 'call-outline', activeIcon: 'call' },
-              { id: 'perfil', label: 'Perfil', icon: 'person-circle-outline', activeIcon: 'person-circle' },
+              { id: 'chats', label: 'Chats', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles', badge: totalUnreadMessages },
+              { id: 'estados', label: 'Estados', icon: 'aperture-outline', activeIcon: 'aperture', badge: 0 },
+              { id: 'llamadas', label: 'Llamadas', icon: 'call-outline', activeIcon: 'call', badge: 0 },
+              { id: 'perfil', label: 'Perfil', icon: 'person-circle-outline', activeIcon: 'person-circle', badge: 0 },
             ].map((t) => {
               const active = activeTab === t.id;
               return (
@@ -1104,6 +1188,7 @@ function MainApp() {
                     style={[
                       styles.tabIconPill,
                       active && { backgroundColor: 'rgba(0,168,132,0.18)' },
+                      { position: 'relative' },
                     ]}
                   >
                     <Ionicons
@@ -1111,6 +1196,28 @@ function MainApp() {
                       size={21}
                       color={active ? colors.primary : colors.textMuted}
                     />
+                    {t.badge > 0 && (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: 6,
+                          backgroundColor: '#00A884',
+                          minWidth: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          paddingHorizontal: 4,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderWidth: 1.5,
+                          borderColor: colors.tabBar,
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '900' }}>
+                          {t.badge > 99 ? '99+' : t.badge}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <Text
                     style={[
