@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
   TextInput, Alert, Image, Platform, StatusBar
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -82,14 +83,14 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
             }}
             style={styles.myStatusLeft}
           >
-            <View style={[styles.avatarRing, { borderColor: colors.primary }]}>
+            <View style={[styles.avatarRing, { borderColor: colors.primary, backgroundColor: colors.inputBg }]}>
               {esMiAvatarImagen ? (
                 <Image source={{ uri: userProfile.avatar }} style={styles.avatarImg} />
               ) : (
-                <Text style={{ fontSize: 26 }}>{userProfile?.avatar || '😎'}</Text>
+                <Text style={{ fontSize: 24 }}>{userProfile?.avatar || '😎'}</Text>
               )}
               <View style={[styles.plusCorner, { backgroundColor: colors.primary }]}>
-                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>+</Text>
+                <Ionicons name="add" size={14} color="#FFF" />
               </View>
             </View>
             <View style={{ flex: 1 }}>
@@ -105,7 +106,7 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
               onPress={handlePickStatusPhoto}
               style={[styles.circleActionBtn, { backgroundColor: colors.inputBg }]}
             >
-              <Text style={{ fontSize: 18 }}>📷</Text>
+              <Ionicons name="camera-outline" size={20} color={colors.text} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -114,7 +115,7 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
               }}
               style={[styles.circleActionBtn, { backgroundColor: colors.primary }]}
             >
-              <Text style={{ fontSize: 17 }}>✏️</Text>
+              <Ionicons name="create-outline" size={20} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -125,12 +126,12 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
 
         {statuses.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={{ fontSize: 34, marginBottom: 8 }}>⭕</Text>
+            <Ionicons name="aperture-outline" size={38} color={colors.primary} style={{ marginBottom: 8 }} />
             <Text style={[styles.title, { color: colors.text, textAlign: 'center' }]}>
               Aún no hay estados recientes
             </Text>
             <Text style={[styles.sub, { color: colors.textMuted, textAlign: 'center', marginTop: 4 }]}>
-              Toca 📷 o ✏️ arriba para compartir una foto, frase o sticker con tus amigos.
+              Usa los botones de cámara o lápiz arriba para compartir una foto, frase o sticker con tus amigos.
             </Text>
           </View>
         ) : (
@@ -171,13 +172,16 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
                     {st.user_name} {st.user_phone === userProfile.phone ? '(Tú)' : ''}
                   </Text>
                   <Text style={[styles.sub, { color: colors.textMuted }]} numberOfLines={1}>
-                    {imageUri ? `📷 Foto ${caption ? '• ' + caption : ''}` : caption}
+                    {imageUri ? `Foto ${caption ? '• ' + caption : ''}` : caption}
                   </Text>
                 </View>
 
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.timeTag, { color: colors.primary }]}>{st.time || 'Hoy'}</Text>
-                  <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>🔒 E2EE</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                    <Ionicons name="lock-closed" size={10} color={colors.textMuted} />
+                    <Text style={{ fontSize: 10, color: colors.textMuted }}>E2EE</Text>
+                  </View>
                 </View>
               </TouchableOpacity>
             );
@@ -190,18 +194,21 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
         <View style={[styles.fullModal, { backgroundColor: COLORES_FONDO[bgIndex] }]}>
           <View style={styles.modalTopBar}>
             <TouchableOpacity onPress={() => setModalNew(false)} style={styles.topPillBtn}>
-              <Text style={styles.topBtn}>✕ Cerrar</Text>
+              <Ionicons name="close" size={16} color="#FFF" />
+              <Text style={styles.topBtn}>Cerrar</Text>
             </TouchableOpacity>
 
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity onPress={handlePickStatusPhoto} style={styles.topPillBtn}>
-                <Text style={styles.topBtn}>📷 Foto</Text>
+                <Ionicons name="camera-outline" size={16} color="#FFF" />
+                <Text style={styles.topBtn}>Foto</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setBgIndex((bgIndex + 1) % COLORES_FONDO.length)}
                 style={styles.topPillBtn}
               >
-                <Text style={styles.topBtn}>🎨 Fondo</Text>
+                <Ionicons name="color-palette-outline" size={16} color="#FFF" />
+                <Text style={styles.topBtn}>Fondo</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -240,7 +247,8 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
             </ScrollView>
 
             <TouchableOpacity onPress={handlePublish} style={styles.publishBtn}>
-              <Text style={styles.publishBtnText}>🚀 Publicar en Mi Estado (24h)</Text>
+              <Ionicons name="send" size={18} color="#FFFFFF" />
+              <Text style={styles.publishBtnText}>Publicar en Mi Estado (24h)</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -262,12 +270,12 @@ export default function EstadosScreen({ statuses = [], userProfile, onPublishSta
 
               <View style={styles.viewerHeader}>
                 <View>
-                  <Text style={styles.viewerAuthor}>⭕ {viewingStatus.user_name}</Text>
+                  <Text style={styles.viewerAuthor}>{viewingStatus.user_name}</Text>
                   <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
-                    {viewingStatus.time || 'Hace un momento'} • 🔒 Cifrado E2EE
+                    {viewingStatus.time || 'Hace un momento'} • Cifrado E2EE
                   </Text>
                 </View>
-                <Text style={styles.viewerClose}>✕</Text>
+                <Ionicons name="close" size={26} color="#FFF" />
               </View>
 
               <View style={styles.centerInputWrap}>
@@ -400,6 +408,9 @@ const styles = StyleSheet.create({
   },
   topBtn: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   topPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: 'rgba(0,0,0,0.28)',
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -430,12 +441,15 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   publishBtn: {
-    backgroundColor: '#10B981',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#00A884',
     paddingVertical: 16,
     borderRadius: 16,
-    alignItems: 'center',
   },
-  publishBtnText: { color: '#052E16', fontSize: 16, fontWeight: '900' },
+  publishBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   progressBarWrap: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.25)',
@@ -454,7 +468,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   viewerAuthor: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
-  viewerClose: { color: '#FFFFFF', fontSize: 22, fontWeight: '900', padding: 6 },
   viewerPhoto: {
     width: '100%',
     height: 340,

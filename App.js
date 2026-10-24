@@ -6,6 +6,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
 import * as Notifications from 'expo-notifications';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import { supabase } from './lib/supabase';
@@ -717,10 +718,12 @@ function MainApp() {
         />
       ) : (
         <>
-          {/* HEADER PRINCIPAL ESTILO WHATSAPP */}
-          <View style={[styles.topHeader, { backgroundColor: colors.headerBg }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ fontSize: 24 }}>💬</Text>
+          {/* HEADER PRINCIPAL ESTILO WHATSAPP & TELEGRAM */}
+          <View style={[styles.topHeader, { backgroundColor: colors.headerBg, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+              <View style={styles.brandLogoCircle}>
+                <Ionicons name="chatbubbles" size={20} color="#FFFFFF" />
+              </View>
               <View>
                 <Text style={styles.brandTitle}>NexChat</Text>
                 <Text style={styles.brandSub}>● Nube 24/7 Activa • E2EE</Text>
@@ -729,10 +732,10 @@ function MainApp() {
 
             <View style={styles.headerRight}>
               <TouchableOpacity onPress={toggleTheme} style={styles.headerIconBtn}>
-                <Text style={{ fontSize: 18 }}>{isDark ? '☀️' : '🌙'}</Text>
+                <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color="#FFFFFF" />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setIsLocked(true)} style={styles.headerIconBtn}>
-                <Text style={{ fontSize: 18 }}>🔒</Text>
+                <Ionicons name="lock-closed-outline" size={19} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
@@ -804,13 +807,13 @@ function MainApp() {
             )}
           </View>
 
-          {/* BARRA DE NAVEGACIÓN INFERIOR (4 PESTAÑAS ESTILO WHATSAPP) */}
+          {/* BARRA DE NAVEGACIÓN INFERIOR (4 PESTAÑAS CON ICONOS VECTORIALES) */}
           <View style={[styles.tabBar, { backgroundColor: colors.tabBar, borderTopColor: colors.border }]}>
             {[
-              { id: 'chats', label: 'Chats', icon: '💬' },
-              { id: 'estados', label: 'Estados', icon: '⭕' },
-              { id: 'llamadas', label: 'Llamadas', icon: '📞' },
-              { id: 'perfil', label: 'Perfil', icon: '👤' },
+              { id: 'chats', label: 'Chats', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
+              { id: 'estados', label: 'Estados', icon: 'aperture-outline', activeIcon: 'aperture' },
+              { id: 'llamadas', label: 'Llamadas', icon: 'call-outline', activeIcon: 'call' },
+              { id: 'perfil', label: 'Perfil', icon: 'person-circle-outline', activeIcon: 'person-circle' },
             ].map((t) => {
               const active = activeTab === t.id;
               return (
@@ -822,10 +825,14 @@ function MainApp() {
                   <View
                     style={[
                       styles.tabIconPill,
-                      active && { backgroundColor: 'rgba(16,185,129,0.2)' },
+                      active && { backgroundColor: 'rgba(0,168,132,0.18)' },
                     ]}
                   >
-                    <Text style={{ fontSize: 19 }}>{t.icon}</Text>
+                    <Ionicons
+                      name={active ? t.activeIcon : t.icon}
+                      size={21}
+                      color={active ? colors.primary : colors.textMuted}
+                    />
                   </View>
                   <Text
                     style={[
@@ -927,6 +934,14 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 10 : 12,
     paddingBottom: 12,
     elevation: 4,
+  },
+  brandLogoCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#00A884',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brandTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', letterSpacing: -0.3 },
   brandSub: { color: '#6EE7B7', fontSize: 11, fontWeight: '700' },

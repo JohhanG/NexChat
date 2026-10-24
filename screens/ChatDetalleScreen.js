@@ -4,6 +4,7 @@ import {
   Image, KeyboardAvoidingView, Platform, Modal, Alert, StatusBar
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad } from '../lib/seguridad';
 
@@ -15,19 +16,28 @@ const LISTA_EMOJIS = [
 ];
 
 const LISTA_STICKERS = [
-  { id: 'stk_1', icon: '🐱💖', label: 'Gatito Amor', bg: 'rgba(236,72,153,0.18)' },
-  { id: 'stk_2', icon: '🐶🎉', label: 'Perrito Fiesta', bg: 'rgba(16,185,129,0.18)' },
-  { id: 'stk_3', icon: '😎🔥', label: 'Modo Épico', bg: 'rgba(245,158,11,0.18)' },
-  { id: 'stk_4', icon: '🤣💀', label: 'Muerto de Risa', bg: 'rgba(59,130,246,0.18)' },
-  { id: 'stk_5', icon: '🙏✨', label: 'Bendiciones', bg: 'rgba(139,92,246,0.18)' },
-  { id: 'stk_6', icon: '🚀🌕', label: 'A la Luna', bg: 'rgba(14,165,233,0.18)' },
-  { id: 'stk_7', icon: '👑🦁', label: 'Rey Total', bg: 'rgba(234,179,8,0.18)' },
-  { id: 'stk_8', icon: '❤️‍🔥🫂', label: 'Abrazo Fuerte', bg: 'rgba(239,68,68,0.18)' },
-  { id: 'stk_9', icon: '☕😌', label: 'Cafecito Relax', bg: 'rgba(168,85,247,0.18)' },
-  { id: 'stk_10', icon: '🫡🛡️', label: 'A la Orden', bg: 'rgba(20,184,166,0.18)' },
-  { id: 'stk_11', icon: '🥳🎂', label: 'Celebración', bg: 'rgba(244,63,94,0.18)' },
-  { id: 'stk_12', icon: '💯🏆', label: 'Campeón 100%', bg: 'rgba(34,197,94,0.18)' },
+  { id: 'stk_1', icon: '🐱💖', label: 'Gatito Amor', bg: 'rgba(236,72,153,0.15)' },
+  { id: 'stk_2', icon: '🐶🎉', label: 'Perrito Fiesta', bg: 'rgba(16,185,129,0.15)' },
+  { id: 'stk_3', icon: '😎🔥', label: 'Modo Épico', bg: 'rgba(245,158,11,0.15)' },
+  { id: 'stk_4', icon: '🤣💀', label: 'Muerto de Risa', bg: 'rgba(59,130,246,0.15)' },
+  { id: 'stk_5', icon: '🙏✨', label: 'Bendiciones', bg: 'rgba(139,92,246,0.15)' },
+  { id: 'stk_6', icon: '🚀🌕', label: 'A la Luna', bg: 'rgba(14,165,233,0.15)' },
+  { id: 'stk_7', icon: '👑🦁', label: 'Rey Total', bg: 'rgba(234,179,8,0.15)' },
+  { id: 'stk_8', icon: '❤️‍🔥🫂', label: 'Abrazo Fuerte', bg: 'rgba(239,68,68,0.15)' },
+  { id: 'stk_9', icon: '☕😌', label: 'Cafecito Relax', bg: 'rgba(168,85,247,0.15)' },
+  { id: 'stk_10', icon: '🫡🛡️', label: 'A la Orden', bg: 'rgba(20,184,166,0.15)' },
+  { id: 'stk_11', icon: '🥳🎂', label: 'Celebración', bg: 'rgba(244,63,94,0.15)' },
+  { id: 'stk_12', icon: '💯🏆', label: 'Campeón 100%', bg: 'rgba(34,197,94,0.15)' },
 ];
+
+function obtenerIniciales(nombre = '') {
+  const limpio = String(nombre).replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ+ ]/g, '').trim();
+  if (!limpio) return 'NC';
+  if (limpio.startsWith('+')) return limpio.slice(0, 3);
+  const partes = limpio.split(' ').filter(Boolean);
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  return limpio.slice(0, 2).toUpperCase();
+}
 
 export default function ChatDetalleScreen({
   chat,
@@ -44,16 +54,16 @@ export default function ChatDetalleScreen({
   const { colors } = useTheme();
   const [text, setText] = useState('');
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerTab, setPickerTab] = useState('emojis'); // 'emojis' | 'stickers'
+  const [pickerTab, setPickerTab] = useState('emojis');
   const [ephemeralMode, setEphemeralMode] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
 
-  // Modal de Editar Contacto / Info E2EE
+  // Modal Ficha de Contacto (Estilo WhatsApp & Telegram)
   const [infoModal, setInfoModal] = useState(false);
   const [editedName, setEditedName] = useState(chat.name || '');
 
-  // Modal de Eliminar Mensaje (Para mí / Para todos / Cancelar)
+  // Modal Eliminar Mensaje
   const [selectedMessage, setSelectedMessage] = useState(null);
 
   const scrollRef = useRef(null);
@@ -151,18 +161,62 @@ export default function ChatDetalleScreen({
   };
 
   const fingerprint = generarHuellaSeguridad(userProfile.phone, chat.peerPhone || chat.id);
+  const bloquesHuella = fingerprint.split(/\s+/).filter(Boolean);
   const esAvatarImagen =
     chat.avatar && (chat.avatar.startsWith('http') || chat.avatar.startsWith('data:image'));
+
+  const renderAvatarCircle = (size = 42) => {
+    if (esAvatarImagen) {
+      return (
+        <Image
+          source={{ uri: chat.avatar }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+        />
+      );
+    }
+    if (chat.official) {
+      return (
+        <View
+          style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: '#00A884',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="shield-checkmark" size={size * 0.52} color="#FFFFFF" />
+        </View>
+      );
+    }
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: chat.isGroup ? '#0284C7' : '#00A884',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: size * 0.38, fontWeight: '900' }}>
+          {obtenerIniciales(chat.name)}
+        </Text>
+      </View>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.chatWallpaper }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* HEADER ESTILO WHATSAPP */}
-      <View style={[styles.header, { backgroundColor: colors.headerBg }]}>
+      {/* BARRA SUPERIOR ESTILO WHATSAPP & TELEGRAM CON ICONOS VECTORIALES NÍTIDOS */}
+      <View style={[styles.header, { backgroundColor: colors.headerBg, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -172,24 +226,18 @@ export default function ChatDetalleScreen({
             setInfoModal(true);
           }}
         >
-          {esAvatarImagen ? (
-            <Image source={{ uri: chat.avatar }} style={styles.avatarImg} />
-          ) : (
-            <View style={[styles.avatarCircle, { backgroundColor: chat.official ? '#10B981' : '#0284C7' }]}>
-              <Text style={styles.avatarEmoji}>{chat.avatar || '👤'}</Text>
-            </View>
-          )}
+          {renderAvatarCircle(42)}
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               <Text style={styles.headerName} numberOfLines={1}>{chat.name}</Text>
-              {chat.official && <Text style={{ fontSize: 13 }}>✅</Text>}
+              {chat.official && <Ionicons name="checkmark-circle" size={16} color="#00A884" />}
             </View>
             <Text style={styles.headerStatus} numberOfLines={1}>
               {chat.official
                 ? 'Canal Oficial Verificado'
                 : chat.isGroup
-                ? `Grupo • Toca para editar nombre`
-                : `${chat.peerPhone || 'En línea'} • Toca para editar`}
+                ? `Grupo • Toca aquí para info`
+                : `en línea • toca para info del contacto`}
             </Text>
           </View>
         </TouchableOpacity>
@@ -197,43 +245,48 @@ export default function ChatDetalleScreen({
         <View style={styles.headerActions}>
           {!chat.official && (
             <>
-              <TouchableOpacity onPress={() => onStartCall(chat, 'video')} style={styles.actionBtn}>
-                <Text style={styles.actionIcon}>📹</Text>
+              <TouchableOpacity onPress={() => onStartCall(chat, 'video')} style={styles.headerIconBtn}>
+                <Ionicons name="videocam-outline" size={22} color="#FFFFFF" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => onStartCall(chat, 'audio')} style={styles.actionBtn}>
-                <Text style={styles.actionIcon}>📞</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setEditedName(chat.name || '');
-                  setInfoModal(true);
-                }}
-                style={styles.actionBtn}
-              >
-                <Text style={styles.actionIcon}>✏️</Text>
+              <TouchableOpacity onPress={() => onStartCall(chat, 'audio')} style={styles.headerIconBtn}>
+                <Ionicons name="call-outline" size={20} color="#FFFFFF" />
               </TouchableOpacity>
             </>
           )}
           <TouchableOpacity
             onPress={() => setEphemeralMode(!ephemeralMode)}
             style={[
-              styles.actionBtn,
-              ephemeralMode && { backgroundColor: 'rgba(16,185,129,0.28)', borderRadius: 8 },
+              styles.headerIconBtn,
+              ephemeralMode && { backgroundColor: 'rgba(0,168,132,0.28)' },
             ]}
           >
-            <Text style={styles.actionIcon}>⏱️</Text>
+            <Ionicons
+              name="timer-outline"
+              size={21}
+              color={ephemeralMode ? '#00A884' : '#FFFFFF'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setEditedName(chat.name || '');
+              setInfoModal(true);
+            }}
+            style={styles.headerIconBtn}
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* BANNER CIFRADO E INSTRUCCIÓN DE ELIMINAR MENSAJE */}
+      {/* PÍLDORA ELEGANTE DE CIFRADO E2EE ESTILO WHATSAPP */}
       <TouchableOpacity
         onPress={() => setInfoModal(true)}
         style={[styles.e2eeBanner, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
+        <Ionicons name="lock-closed" size={13} color={colors.primary} />
         <Text style={[styles.e2eeText, { color: colors.textMuted }]}>
-          🔒 Cifrado E2EE (SHA-256) • 💡 Toca cualquier mensaje para eliminarlo (para ti o para todos)
-          {ephemeralMode ? ' • ⏱️ Temp (15s) ACTIVO' : ''}
+          Mensajes y llamadas cifrados de extremo a extremo. Toca un mensaje para eliminarlo.
+          {ephemeralMode ? ' • ⏱️ 15s Activo' : ''}
         </Text>
       </TouchableOpacity>
 
@@ -277,7 +330,9 @@ export default function ChatDetalleScreen({
                   ) : null}
                   <View style={styles.msgFooter}>
                     <Text style={[styles.msgTime, { color: colors.textMuted }]}>{msg.time}</Text>
-                    {isMe && <Text style={styles.msgChecks}> ✓✓</Text>}
+                    {isMe && (
+                      <Ionicons name="checkmark-done" size={14} color="#53BDEB" style={{ marginLeft: 4 }} />
+                    )}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -309,7 +364,7 @@ export default function ChatDetalleScreen({
 
               {!isDeleted && msg.mediaType === 'audio' ? (
                 <View style={styles.audioRow}>
-                  <Text style={{ fontSize: 20 }}>▶️ 🎵</Text>
+                  <Ionicons name="play-circle" size={28} color="#00A884" />
                   <View style={styles.audioWave} />
                 </View>
               ) : null}
@@ -325,16 +380,20 @@ export default function ChatDetalleScreen({
               </Text>
 
               <View style={styles.msgFooter}>
-                {msg.ephemeral && !isDeleted && <Text style={{ fontSize: 10, marginRight: 4 }}>⏱️</Text>}
-                <Text style={[styles.msgTime, { color: colors.textMuted }]}>{msg.time}</Text>
-                {isMe && !isDeleted && <Text style={styles.msgChecks}> ✓✓</Text>}
+                {msg.ephemeral && !isDeleted && (
+                  <Ionicons name="timer-outline" size={12} color={colors.textMuted} style={{ marginRight: 4 }} />
+                )}
+                <Text style={[styles.msgTime, { color: 'rgba(255,255,255,0.65)' }]}>{msg.time}</Text>
+                {isMe && !isDeleted && (
+                  <Ionicons name="checkmark-done" size={15} color="#53BDEB" style={{ marginLeft: 4 }} />
+                )}
               </View>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
 
-      {/* PANEL DE EMOJIS Y STICKERS ESTILO WHATSAPP */}
+      {/* PANEL DE EMOJIS Y STICKERS ESTILO WHATSAPP / TELEGRAM */}
       {showPicker && (
         <View style={[styles.pickerPanel, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <View style={[styles.pickerTabs, { borderBottomColor: colors.border }]}>
@@ -362,8 +421,8 @@ export default function ChatDetalleScreen({
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setShowPicker(false)} style={{ paddingHorizontal: 12 }}>
-              <Text style={{ color: colors.textMuted, fontWeight: '900', fontSize: 14 }}>✕</Text>
+            <TouchableOpacity onPress={() => setShowPicker(false)} style={{ paddingHorizontal: 14 }}>
+              <Ionicons name="close" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -398,55 +457,66 @@ export default function ChatDetalleScreen({
         </View>
       )}
 
-      {/* BARRA INFERIOR DE ENTRADA */}
+      {/* BARRA INFERIOR DE MENSAJE ESTILO WHATSAPP & TELEGRAM */}
       {chat.official ? (
         <View style={[styles.officialFooter, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <Ionicons name="megaphone-outline" size={16} color={colors.primary} />
           <Text style={[styles.officialFooterText, { color: colors.textMuted }]}>
-            📢 Solo los administradores de <Text style={{ fontWeight: '800' }}>NexChat Oficial ✅</Text> pueden enviar comunicados en este canal.
+            Solo los administradores de <Text style={{ fontWeight: '800', color: colors.text }}>NexChat Oficial</Text> pueden enviar comunicados.
           </Text>
         </View>
       ) : (
-        <View style={[styles.inputBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          <TouchableOpacity
-            onPress={() => {
-              setPickerTab('emojis');
-              setShowPicker(!showPicker);
-            }}
-            style={styles.iconBtn}
-          >
-            <Text style={{ fontSize: 22 }}>😊</Text>
-          </TouchableOpacity>
+        <View style={[styles.inputBar, { backgroundColor: colors.bg }]}>
+          <View style={[styles.inputPillContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => {
+                setPickerTab('emojis');
+                setShowPicker(!showPicker);
+              }}
+              style={styles.pillIconBtn}
+            >
+              <Ionicons
+                name={showPicker && pickerTab === 'emojis' ? 'happy' : 'happy-outline'}
+                size={23}
+                color={showPicker && pickerTab === 'emojis' ? colors.primary : colors.textMuted}
+              />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => {
-              setPickerTab('stickers');
-              setShowPicker(true);
-            }}
-            style={styles.iconBtn}
-          >
-            <Text style={{ fontSize: 21 }}>🎭</Text>
-          </TouchableOpacity>
+            <TextInput
+              style={[styles.pillInput, { color: colors.text }]}
+              placeholder={recordingAudio ? `Grabando nota de voz (${recordSeconds}s)...` : 'Mensaje'}
+              placeholderTextColor={recordingAudio ? '#EF4444' : colors.textMuted}
+              value={text}
+              onChangeText={setText}
+              editable={!recordingAudio}
+              onSubmitEditing={handleSendText}
+            />
 
-          <TouchableOpacity onPress={handlePickImage} style={styles.iconBtn}>
-            <Text style={{ fontSize: 21 }}>📷</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setPickerTab('stickers');
+                setShowPicker(true);
+              }}
+              style={styles.pillIconBtn}
+            >
+              <Ionicons
+                name="sparkles-outline"
+                size={21}
+                color={showPicker && pickerTab === 'stickers' ? colors.primary : colors.textMuted}
+              />
+            </TouchableOpacity>
 
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-            placeholder={recordingAudio ? `🔴 Grabando (${recordSeconds}s)...` : 'Mensaje o sticker...'}
-            placeholderTextColor={recordingAudio ? '#EF4444' : colors.textMuted}
-            value={text}
-            onChangeText={setText}
-            editable={!recordingAudio}
-            onSubmitEditing={handleSendText}
-          />
+            <TouchableOpacity onPress={handlePickImage} style={styles.pillIconBtn}>
+              <Ionicons name="camera-outline" size={23} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
 
           {text.trim().length > 0 ? (
             <TouchableOpacity
               onPress={handleSendText}
               style={[styles.sendBtn, { backgroundColor: colors.primary }]}
             >
-              <Text style={styles.sendIcon}>➤</Text>
+              <Ionicons name="send" size={19} color="#FFFFFF" />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -456,13 +526,13 @@ export default function ChatDetalleScreen({
                 { backgroundColor: recordingAudio ? '#EF4444' : colors.primary },
               ]}
             >
-              <Text style={styles.sendIcon}>{recordingAudio ? '⏹' : '🎤'}</Text>
+              <Ionicons name={recordingAudio ? 'stop' : 'mic'} size={22} color="#FFFFFF" />
             </TouchableOpacity>
           )}
         </View>
       )}
 
-      {/* MODAL ELIMINAR MENSAJE (PARA MÍ / PARA TODOS / CANCELAR) ESTILO WHATSAPP */}
+      {/* MODAL ELIMINAR MENSAJE (PARA MÍ / PARA TODOS / CANCELAR) */}
       <Modal
         visible={!!selectedMessage}
         transparent
@@ -471,9 +541,14 @@ export default function ChatDetalleScreen({
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.deleteModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.deleteModalTitle, { color: colors.text }]}>
-              ¿Deseas eliminar este mensaje?
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View style={[styles.iconBadge, { backgroundColor: 'rgba(239,68,68,0.14)' }]}>
+                <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              </View>
+              <Text style={[styles.deleteModalTitle, { color: colors.text }]}>
+                ¿Eliminar este mensaje?
+              </Text>
+            </View>
 
             {selectedMessage && (
               <View style={[styles.msgPreviewBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
@@ -483,7 +558,6 @@ export default function ChatDetalleScreen({
               </View>
             )}
 
-            {/* Opción 1: Eliminar para todos */}
             <TouchableOpacity
               onPress={() => {
                 if (onDeleteMessageForAll && selectedMessage) {
@@ -491,14 +565,14 @@ export default function ChatDetalleScreen({
                 }
                 setSelectedMessage(null);
               }}
-              style={[styles.deleteOptionBtn, { borderBottomWidth: 1, borderColor: colors.border }]}
+              style={[styles.deleteRowBtn, { backgroundColor: 'rgba(239,68,68,0.12)' }]}
             >
+              <Ionicons name="ban-outline" size={18} color="#EF4444" />
               <Text style={[styles.deleteOptionText, { color: '#EF4444' }]}>
-                🚫 Eliminar para todos
+                Eliminar para todos
               </Text>
             </TouchableOpacity>
 
-            {/* Opción 2: Eliminar para mí */}
             <TouchableOpacity
               onPress={() => {
                 if (onDeleteMessageForMe && selectedMessage) {
@@ -506,100 +580,167 @@ export default function ChatDetalleScreen({
                 }
                 setSelectedMessage(null);
               }}
-              style={[styles.deleteOptionBtn, { borderBottomWidth: 1, borderColor: colors.border }]}
+              style={[styles.deleteRowBtn, { backgroundColor: colors.inputBg, marginTop: 8 }]}
             >
-              <Text style={[styles.deleteOptionText, { color: colors.primary }]}>
-                🗑️ Eliminar para mí
+              <Ionicons name="trash-outline" size={18} color={colors.text} />
+              <Text style={[styles.deleteOptionText, { color: colors.text }]}>
+                Eliminar para mí
               </Text>
             </TouchableOpacity>
 
-            {/* Opción 3: Cancelar */}
             <TouchableOpacity
               onPress={() => setSelectedMessage(null)}
-              style={styles.deleteOptionBtn}
+              style={[styles.cancelRowBtn, { marginTop: 10 }]}
             >
-              <Text style={[styles.deleteOptionText, { color: colors.textMuted }]}>
-                ✕ Cancelar
+              <Text style={{ color: colors.textMuted, fontSize: 14, fontWeight: '800' }}>
+                Cancelar
               </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL EDITAR CONTACTO + VERIFICACIÓN E2EE */}
-      <Modal visible={infoModal} transparent animationType="fade" onRequestClose={() => setInfoModal(false)}>
+      {/* FICHA DEL CONTACTO Y SEGURIDAD (ESTILO WHATSAPP & TELEGRAM) */}
+      <Modal visible={infoModal} transparent animationType="slide" onRequestClose={() => setInfoModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {chat.official ? '🛡️ Canal Oficial Verificado' : '✏️ Editar Contacto y Seguridad'}
-            </Text>
-
-            {!chat.official && (
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
-                  NOMBRE DEL CONTACTO / GRUPO
-                </Text>
-                <TextInput
-                  style={[styles.editInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-                  value={editedName}
-                  onChangeText={setEditedName}
-                  placeholder="Nombre del contacto"
-                  placeholderTextColor={colors.textMuted}
-                />
-                {chat.peerPhone && (
-                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginTop: 6 }}>
-                    📱 Número: {chat.peerPhone}
-                  </Text>
-                )}
-
-                <TouchableOpacity
-                  onPress={handleSaveContactName}
-                  style={[styles.saveContactBtn, { backgroundColor: colors.primary }]}
-                >
-                  <Text style={{ color: '#052E16', fontWeight: '900', fontSize: 14 }}>
-                    💾 Guardar Nombre del Contacto
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <Text style={[styles.fieldLabel, { color: colors.textMuted, textAlign: 'center' }]}>
-              🔒 HUELLA CRIPTOGRÁFICA E2EE (40 DÍGITOS)
-            </Text>
-            <View style={[styles.fingerprintBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
-              <Text style={[styles.fingerprintText, { color: colors.primary }]}>{fingerprint}</Text>
+          <View style={[styles.contactSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {/* Barra superior de cerrar */}
+            <View style={styles.sheetTopBar}>
+              <Text style={[styles.sheetHeaderLabel, { color: colors.textMuted }]}>
+                INFO DEL CONTACTO
+              </Text>
+              <TouchableOpacity onPress={() => setInfoModal(false)} style={styles.sheetCloseBtn}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
             </View>
 
-            {!chat.official && (
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (onClearChat) onClearChat(chat.id);
-                    setInfoModal(false);
-                  }}
-                  style={[styles.dangerSmallBtn, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
-                >
-                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800' }}>🧹 Vaciar chat</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => {
-                    if (onDeleteChat) onDeleteChat(chat.id);
-                    setInfoModal(false);
-                  }}
-                  style={[styles.dangerSmallBtn, { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.12)' }]}
-                >
-                  <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '800' }}>🗑️ Eliminar contacto</Text>
-                </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Avatar Grande + Nombre + Teléfono */}
+              <View style={styles.sheetProfileHero}>
+                {renderAvatarCircle(82)}
+                <Text style={[styles.sheetContactName, { color: colors.text }]}>
+                  {chat.name}
+                </Text>
+                <Text style={[styles.sheetContactPhone, { color: colors.primary }]}>
+                  {chat.peerPhone || (chat.official ? 'Cuenta Oficial Verificada' : 'Grupo Global')}
+                </Text>
               </View>
-            )}
 
-            <TouchableOpacity
-              onPress={() => setInfoModal(false)}
-              style={[styles.closeModalBtn, { backgroundColor: colors.inputBg }]}
-            >
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>Cerrar</Text>
-            </TouchableOpacity>
+              {/* 3 Botones de Acción Rápida estilo WhatsApp / Telegram */}
+              {!chat.official && (
+                <View style={styles.quickActionsGrid}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setInfoModal(false);
+                      onStartCall(chat, 'audio');
+                    }}
+                    style={[styles.quickActionBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  >
+                    <Ionicons name="call-outline" size={22} color={colors.primary} />
+                    <Text style={[styles.quickActionLabel, { color: colors.text }]}>Llamar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setInfoModal(false);
+                      onStartCall(chat, 'video');
+                    }}
+                    style={[styles.quickActionBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  >
+                    <Ionicons name="videocam-outline" size={22} color={colors.primary} />
+                    <Text style={[styles.quickActionLabel, { color: colors.text }]}>Video</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setEphemeralMode(!ephemeralMode)}
+                    style={[styles.quickActionBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  >
+                    <Ionicons
+                      name="timer-outline"
+                      size={22}
+                      color={ephemeralMode ? '#10B981' : colors.primary}
+                    />
+                    <Text style={[styles.quickActionLabel, { color: colors.text }]}>
+                      {ephemeralMode ? 'Temp: ON' : 'Temporal'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Sección Editar Nombre del Contacto */}
+              {!chat.official && (
+                <View style={[styles.sheetSection, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <Ionicons name="create-outline" size={16} color={colors.primary} />
+                    <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 0 }]}>
+                      EDITAR NOMBRE DEL CONTACTO
+                    </Text>
+                  </View>
+
+                  <View style={styles.editRowInline}>
+                    <TextInput
+                      style={[styles.editInputInline, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                      value={editedName}
+                      onChangeText={setEditedName}
+                      placeholder="Escribe el nombre..."
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    <TouchableOpacity
+                      onPress={handleSaveContactName}
+                      style={[styles.saveInlineBtn, { backgroundColor: colors.primary }]}
+                    >
+                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                      <Text style={styles.saveInlineBtnText}>Guardar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Sección Cifrado y Huella de Seguridad (40 dígitos organizados en cuadrícula 2x4) */}
+              <View style={[styles.sheetSection, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <Ionicons name="lock-closed" size={15} color={colors.primary} />
+                  <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 0 }]}>
+                    CÓDIGO DE SEGURIDAD E2EE (SHA-256)
+                  </Text>
+                </View>
+
+                <View style={[styles.fpGridWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  {bloquesHuella.map((bloque, idx) => (
+                    <View key={idx} style={styles.fpGridCell}>
+                      <Text style={[styles.fpCellText, { color: colors.primary }]}>{bloque}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              {/* Acciones de Limpieza / Eliminación */}
+              {!chat.official && (
+                <View style={styles.dangerActionsRow}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (onClearChat) onClearChat(chat.id);
+                      setInfoModal(false);
+                    }}
+                    style={[styles.sheetActionBtn, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                  >
+                    <Ionicons name="sparkles-outline" size={17} color={colors.text} />
+                    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>Vaciar chat</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (onDeleteChat) onDeleteChat(chat.id);
+                      setInfoModal(false);
+                    }}
+                    style={[styles.sheetActionBtn, { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.4)' }]}
+                  >
+                    <Ionicons name="trash-outline" size={17} color="#EF4444" />
+                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '800' }}>Eliminar contacto</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -612,37 +753,37 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 10 : 10,
-    paddingBottom: 12,
+    paddingHorizontal: 8,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 8 : 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
     elevation: 4,
   },
-  backBtn: { padding: 6, marginRight: 4 },
-  backIcon: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
+  backBtn: { padding: 8, marginRight: 2 },
   headerProfile: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  headerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  headerStatus: { color: '#8A9AA9', fontSize: 11, marginTop: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarImg: { width: 40, height: 40, borderRadius: 20 },
-  avatarEmoji: { fontSize: 20 },
-  headerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  headerStatus: { color: '#A7F3D0', fontSize: 11, marginTop: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  actionBtn: { padding: 7 },
-  actionIcon: { fontSize: 17 },
   e2eeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     marginHorizontal: 14,
     marginTop: 10,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
   },
-  e2eeText: { fontSize: 11, textAlign: 'center', lineHeight: 15 },
+  e2eeText: { fontSize: 11, textAlign: 'center', flex: 1 },
   messagesArea: { flex: 1 },
   msgBubble: {
     maxWidth: '82%',
@@ -653,9 +794,7 @@ const styles = StyleSheet.create({
   },
   msgOut: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   msgIn: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
-  stickerBubble: {
-    marginBottom: 10,
-  },
+  stickerBubble: { marginBottom: 10 },
   stickerCard: {
     paddingHorizontal: 18,
     paddingVertical: 12,
@@ -675,10 +814,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   audioWave: {
-    width: 110,
+    width: 115,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
+    backgroundColor: '#00A884',
   },
   msgText: { fontSize: 15, lineHeight: 20 },
   msgFooter: {
@@ -688,7 +827,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   msgTime: { fontSize: 10 },
-  msgChecks: { fontSize: 11, color: '#38BDF8', fontWeight: '900' },
   pickerPanel: {
     borderTopWidth: 1,
     paddingBottom: 6,
@@ -738,111 +876,214 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingTop: 8,
+    paddingTop: 6,
     paddingBottom: Platform.OS === 'android' ? 14 : 8,
-    borderTopWidth: 1,
-    gap: 4,
+    gap: 6,
   },
-  iconBtn: { padding: 5 },
-  input: {
+  inputPillContainer: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 24,
     borderWidth: 1,
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 6,
+    minHeight: 46,
+  },
+  pillIconBtn: {
+    padding: 7,
+  },
+  pillInput: {
+    flex: 1,
     fontSize: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 2,
   },
-  sendIcon: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
   officialFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderTopWidth: 1,
-    alignItems: 'center',
   },
   officialFooterText: { fontSize: 12, textAlign: 'center' },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'center',
-    padding: 22,
+    padding: 18,
   },
   deleteModalCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 20,
     borderWidth: 1,
+  },
+  iconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deleteModalTitle: {
     fontSize: 17,
     fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 12,
   },
   msgPreviewBox: {
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 12,
-  },
-  deleteOptionBtn: {
-    paddingVertical: 14,
-    alignItems: 'flex-end',
-    paddingHorizontal: 8,
-  },
-  deleteOptionText: {
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  modalCard: {
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 14 },
-  fieldLabel: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
-  editInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 15,
-  },
-  saveContactBtn: {
-    marginTop: 12,
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  fingerprintBox: {
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
     marginBottom: 14,
   },
-  fingerprintText: {
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 2,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  dangerSmallBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1,
+  deleteRowBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  closeModalBtn: {
+    justifyContent: 'center',
+    gap: 8,
     paddingVertical: 13,
     borderRadius: 12,
+  },
+  deleteOptionText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  cancelRowBtn: {
+    paddingVertical: 10,
     alignItems: 'center',
+  },
+  contactSheet: {
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    maxHeight: '90%',
+  },
+  sheetTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  sheetHeaderLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  sheetCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetProfileHero: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  sheetContactName: {
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  sheetContactPhone: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginVertical: 12,
+  },
+  quickActionBox: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sheetSection: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  editRowInline: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  editInputInline: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  saveInlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+  },
+  saveInlineBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  fpGridWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+  },
+  fpGridCell: {
+    width: '25%',
+    paddingVertical: 5,
+    alignItems: 'center',
+  },
+  fpCellText: {
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  dangerActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  sheetActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
   },
 });

@@ -221,7 +221,7 @@ export default function ChatsScreen({
     setVistaModal(null);
   }
 
-  const renderAvatar = (avatarStr, isOfficial = false, size = 50) => {
+  const renderAvatar = (avatarStr, isOfficial = false, size = 50, fallbackName = '') => {
     const esImg =
       avatarStr && (avatarStr.startsWith('http') || avatarStr.startsWith('data:image'));
     if (esImg) {
@@ -232,18 +232,42 @@ export default function ChatsScreen({
         />
       );
     }
+    if (isOfficial) {
+      return (
+        <View
+          style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: '#00A884',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="shield-checkmark" size={size * 0.5} color="#FFFFFF" />
+        </View>
+      );
+    }
+    const limpio = String(fallbackName || '').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ+ ]/g, '').trim();
+    const iniciales = limpio
+      ? limpio.startsWith('+')
+        ? limpio.slice(0, 3)
+        : limpio.slice(0, 2).toUpperCase()
+      : 'NC';
     return (
       <View
         style={{
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: isOfficial ? '#00a884' : '#0284c7',
+          backgroundColor: '#0284C7',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Text style={{ fontSize: size * 0.44 }}>{avatarStr || '👤'}</Text>
+        <Text style={{ color: '#FFFFFF', fontSize: size * 0.36, fontWeight: '900' }}>
+          {iniciales}
+        </Text>
       </View>
     );
   };
@@ -330,15 +354,15 @@ export default function ChatsScreen({
                 }
               }}
             >
-              {renderAvatar(item.avatar, item.official, 52)}
+              {renderAvatar(item.avatar, item.official, 52, item.name)}
 
               <View style={{ flex: 1 }}>
                 <View style={styles.rowBetween}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 5 }}>
                     <Text style={[styles.chatName, { color: colors.text }]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    {item.official && <Text style={{ fontSize: 13 }}>✅</Text>}
+                    {item.official && <Ionicons name="checkmark-circle" size={16} color="#00A884" />}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text
@@ -358,7 +382,7 @@ export default function ChatsScreen({
                         }}
                         style={{ padding: 4 }}
                       >
-                        <Text style={{ fontSize: 13 }}>✏️</Text>
+                        <Ionicons name="create-outline" size={16} color={colors.textMuted} />
                       </TouchableOpacity>
                     )}
                   </View>

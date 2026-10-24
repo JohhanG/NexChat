@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 
 export default function LlamadasScreen({ callHistory, onStartCall }) {
@@ -9,7 +10,9 @@ export default function LlamadasScreen({ callHistory, onStartCall }) {
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
         <View style={[styles.e2eeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={{ fontSize: 22 }}>📞🔒</Text>
+          <View style={[styles.iconBadge, { backgroundColor: colors.primary + '20' }]}>
+            <Ionicons name="shield-checkmark" size={22} color={colors.primary} />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: colors.text }]}>Llamadas de Voz y Video Cifradas</Text>
             <Text style={[styles.sub, { color: colors.textMuted }]}>
@@ -22,35 +25,50 @@ export default function LlamadasScreen({ callHistory, onStartCall }) {
 
         {(!callHistory || callHistory.length === 0) ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={{ fontSize: 32, marginBottom: 8 }}>📲</Text>
+            <Ionicons name="call-outline" size={36} color={colors.primary} style={{ marginBottom: 8 }} />
             <Text style={[styles.title, { color: colors.text }]}>Sin llamadas recientes</Text>
             <Text style={[styles.sub, { color: colors.textMuted, textAlign: 'center', marginTop: 4 }]}>
-              Abre cualquier conversación con tus amigos y toca 📞 o 📹 en la esquina superior.
+              Abre cualquier conversación con tus amigos y toca el icono de llamada o videollamada en la esquina superior.
             </Text>
           </View>
         ) : (
-          callHistory.map((item) => (
-            <View
-              key={item.id}
-              style={[styles.callRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
-                <Text style={{ fontSize: 20 }}>{item.avatar || '👤'}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.title, { color: colors.text }]}>{item.name}</Text>
-                <Text style={[styles.sub, { color: colors.textMuted }]}>
-                  {item.type === 'video' ? '📹 Videollamada saliente' : '📞 Llamada de voz'} • {item.time}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => onStartCall({ name: item.name, avatar: item.avatar, peerPhone: item.peerPhone }, item.type)}
-                style={[styles.callAgainBtn, { backgroundColor: colors.inputBg }]}
+          callHistory.map((item) => {
+            const initials = String(item.name || 'NC').replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'NC';
+            return (
+              <View
+                key={item.id}
+                style={[styles.callRow, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
-                <Text style={{ fontSize: 18 }}>{item.type === 'video' ? '📹' : '📞'}</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+                <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.initialsTxt}>{initials}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.title, { color: colors.text }]}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                    <Ionicons
+                      name="arrow-up-outline"
+                      size={13}
+                      color={colors.primary}
+                      style={{ transform: [{ rotate: '45deg' }] }}
+                    />
+                    <Text style={[styles.sub, { color: colors.textMuted, marginTop: 0 }]}>
+                      {item.type === 'video' ? 'Videollamada saliente' : 'Llamada de voz'} • {item.time}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={() => onStartCall({ name: item.name, avatar: item.avatar, peerPhone: item.peerPhone }, item.type)}
+                  style={[styles.callAgainBtn, { backgroundColor: colors.inputBg }]}
+                >
+                  <Ionicons
+                    name={item.type === 'video' ? 'videocam-outline' : 'call-outline'}
+                    size={20}
+                    color={colors.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -67,6 +85,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     marginBottom: 20,
+  },
+  iconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: { fontSize: 15, fontWeight: '800' },
   sub: { fontSize: 12, marginTop: 2, lineHeight: 17 },
@@ -97,6 +122,11 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  initialsTxt: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
   },
   callAgainBtn: {
     width: 42,

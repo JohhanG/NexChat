@@ -3,55 +3,57 @@ import React, { createContext, useContext, useState } from 'react';
 const ThemeContext = createContext();
 
 export const coloresWhatsApp = {
-  fondo: '#0b141a',
-  panel: '#111b21',
-  header: '#202c33',
-  input: '#2a3942',
-  primario: '#00a884',
+  fondo: '#0E1621',
+  panel: '#17212B',
+  header: '#17212B',
+  input: '#242F3D',
+  primario: '#00A884',
   primarioOscuro: '#008069',
-  burbujaMia: '#005c4b',
-  burbujaOtro: '#202c33',
-  texto: '#e9edef',
-  textoSecundario: '#8696a0',
-  borde: '#222d34',
-  peligro: '#ef4444',
-  leidoAzul: '#53bdeb',
+  burbujaMia: '#005C4B',
+  burbujaOtro: '#182533',
+  texto: '#F5F5F5',
+  textoSecundario: '#8A9AA9',
+  borde: '#232E3C',
+  peligro: '#EF4444',
+  leidoAzul: '#53BDEB',
 };
 
 const darkColors = {
-  bg: '#0b141a',
-  card: '#111b21',
-  headerBg: '#075e54',
-  tabBar: '#111b21',
-  inputBg: '#202c33',
-  primary: '#00a884',
-  text: '#e9edef',
-  textMuted: '#8696a0',
-  border: '#222d34',
-  danger: '#ef4444',
-  chatWallpaper: '#0b141a',
-  bubbleOut: '#005c4b',
-  bubbleIn: '#202c33',
-  bubbleOutText: '#e9edef',
-  bubbleInText: '#e9edef',
+  bg: '#0E1621',           // Fondo profundo estilo Telegram Dark
+  card: '#17212B',         // Tarjetas elevadas elegantes
+  headerBg: '#17212B',     // Barra superior limpia y moderna
+  tabBar: '#17212B',       // Barra inferior uniforme
+  inputBg: '#242F3D',      // Campos de entrada suaves
+  primary: '#00A884',      // Verde esmeralda oficial WhatsApp
+  accent: '#38BDF8',       // Azul celeste Telegram para detalles
+  text: '#F8FAFC',         // Texto blanco nítido
+  textMuted: '#8A9AA9',    // Subtítulos gris azulado
+  border: '#232E3C',       // Bordes sutiles
+  danger: '#EF4444',       // Rojo alerta moderno
+  chatWallpaper: '#0E1621',
+  bubbleOut: '#005C4B',
+  bubbleIn: '#182533',
+  bubbleOutText: '#FFFFFF',
+  bubbleInText: '#F8FAFC',
 };
 
 const lightColors = {
-  bg: '#f0f2f5',
-  card: '#ffffff',
+  bg: '#F1F5F9',
+  card: '#FFFFFF',
   headerBg: '#008069',
-  tabBar: '#ffffff',
-  inputBg: '#f0f2f5',
-  primary: '#00a884',
-  text: '#111b21',
-  textMuted: '#667781',
-  border: '#e9edef',
-  danger: '#ef4444',
-  chatWallpaper: '#efeae2',
-  bubbleOut: '#d9fdd3',
-  bubbleIn: '#ffffff',
-  bubbleOutText: '#111b21',
-  bubbleInText: '#111b21',
+  tabBar: '#FFFFFF',
+  inputBg: '#F1F5F9',
+  primary: '#00A884',
+  accent: '#0284C7',
+  text: '#0F172A',
+  textMuted: '#64748B',
+  border: '#E2E8F0',
+  danger: '#EF4444',
+  chatWallpaper: '#EFEAE2',
+  bubbleOut: '#D9FDD3',
+  bubbleIn: '#FFFFFF',
+  bubbleOutText: '#0F172A',
+  bubbleInText: '#0F172A',
 };
 
 export function ThemeProvider({ children }) {
