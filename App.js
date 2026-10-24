@@ -1164,7 +1164,7 @@ function MainApp() {
     } catch (e) {}
   };
 
-  // 14. Vaciar o eliminar un chat permanentemente
+  // 14. Vaciar chat SOLO para la persona que lo solicita (la otra persona conserva todo intacto)
   const handleClearChat = async (chatId) => {
     clearedChatsRef.current[chatId] = Date.now();
     persistClearedChats(clearedChatsRef.current);
@@ -1180,9 +1180,7 @@ function MainApp() {
       return updated;
     });
 
-    try {
-      await supabase.from('nexchat_messages').delete().eq('chat_id', chatId);
-    } catch (e) {}
+    // Se mantiene intacto en la nube para que el otro usuario no pierda sus mensajes
   };
 
   const handleDeleteChat = async (chatId) => {
@@ -1325,6 +1323,7 @@ function MainApp() {
                 onCreateDirectChat={handleCreateDirectChat}
                 onCreateGroupChat={handleCreateGroupChat}
                 onEditContactName={handleEditContactName}
+                onClearChat={handleClearChat}
                 onDeleteChat={handleDeleteChat}
               />
             )}

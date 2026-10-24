@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
@@ -126,6 +128,10 @@ export default function ChatDetalleScreen({
     });
   }, [chat.id, chat.peerPhone, chat.phone, usersPresence]);
 
+  // Instancias de grabación y reproducción con expo-av
+  const recordingInstanceRef = useRef(null);
+  const soundPlayerRef = useRef(null);
+
   // Temporizador para reproducción de nota de voz
   useEffect(() => {
     let timer;
@@ -139,45 +145,104 @@ export default function ChatDetalleScreen({
     return () => clearInterval(timer);
   }, [playingAudioId]);
 
-  const handleTogglePlayAudio = (msg) => {
+  // Limpiar reproductor al desmontar
+  useEffect(() => {
+    return () => {
+      if (soundPlayerRef.current) {
+        soundPlayerRef.current.unloadAsync().catch(() => {});
+      }
+      try {
+        Speech.stop();
+      } catch {}
+    };
+  }, []);
+
+  const handleTogglePlayAudio = async (msg) => {
     if (!msg?.id) return;
     if (playingAudioId === msg.id) {
+      if (soundPlayerRef.current) {
+        try {
+          await soundPlayerRef.current.stopAsync();
+          await soundPlayerRef.current.unloadAsync();
+        } catch {}
+        soundPlayerRef.current = null;
+      }
       try {
         Speech.stop();
       } catch {}
       setPlayingAudioId(null);
-    } else {
+      return;
+    }
+
+    // Detener cualquier audio previo
+    if (soundPlayerRef.current) {
       try {
-        Speech.stop();
+        await soundPlayerRef.current.stopAsync();
+        await soundPlayerRef.current.unloadAsync();
       } catch {}
-      setPlayingAudioId(msg.id);
-      setAudioSeconds(0);
+      soundPlayerRef.current = null;
+    }
+    try {
+      Speech.stop();
+    } catch {}
 
-      let textoParaHablar = '';
-      if (msg.mediaUri && String(msg.mediaUri).startsWith('VOICE::')) {
-        textoParaHablar = String(msg.mediaUri).replace('VOICE::', '');
-      } else if (msg.text && !msg.text.startsWith('🎤 Nota de voz')) {
-        textoParaHablar = msg.text.replace(/^🎤\s*/, '').replace(/\(\d+s\)$/, '').trim();
-      } else {
-        const sender = msg.sender === 'me' ? 'Tú' : (msg.senderName || 'Tu contacto');
-        textoParaHablar = `Nota de voz de ${sender}.`;
-      }
+    setPlayingAudioId(msg.id);
+    setAudioSeconds(0);
 
+    // 1. Si es audio grabado real en Base64 o URL (expo-av)
+    if (msg.mediaUri && (msg.mediaUri.startsWith('data:audio') || msg.mediaUri.startsWith('http') || msg.mediaUri.startsWith('file:'))) {
       try {
-        Speech.speak(textoParaHablar, {
-          language: 'es-US',
-          pitch: 1.0,
-          rate: 0.95,
-          onDone: () => {
-            setPlayingAudioId(null);
-          },
-          onError: () => {
-            setPlayingAudioId(null);
-          },
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
         });
-      } catch {
-        setPlayingAudioId(null);
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: msg.mediaUri },
+          { shouldPlay: true }
+        );
+        soundPlayerRef.current = sound;
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded) {
+            if (status.didJustFinish) {
+              setPlayingAudioId(null);
+              sound.unloadAsync().catch(() => {});
+              soundPlayerRef.current = null;
+            }
+          } else if (status.error) {
+            setPlayingAudioId(null);
+          }
+        });
+        return;
+      } catch (err) {
+        // Fallback a Speech si hubo error de códec
       }
+    }
+
+    // 2. Fallback a Speech para notas de texto a voz
+    let textoParaHablar = '';
+    if (msg.mediaUri && String(msg.mediaUri).startsWith('VOICE::')) {
+      textoParaHablar = String(msg.mediaUri).replace('VOICE::', '');
+    } else if (msg.text && !msg.text.startsWith('🎤 Nota de voz')) {
+      textoParaHablar = msg.text.replace(/^🎤\s*/, '').replace(/\(\d+s\)$/, '').trim();
+    } else {
+      const sender = msg.sender === 'me' ? 'Tú' : (msg.senderName || 'Tu contacto');
+      textoParaHablar = `Nota de voz de ${sender}.`;
+    }
+
+    try {
+      Speech.speak(textoParaHablar, {
+        language: 'es-US',
+        pitch: 1.0,
+        rate: 0.95,
+        onDone: () => {
+          setPlayingAudioId(null);
+        },
+        onError: () => {
+          setPlayingAudioId(null);
+        },
+      });
+    } catch {
+      setPlayingAudioId(null);
     }
   };
 
@@ -267,12 +332,60 @@ export default function ChatDetalleScreen({
     }
   };
 
-  const handleToggleAudio = () => {
+  const handleToggleAudio = async () => {
     if (!recordingAudio) {
-      setRecordingAudio(true);
+      // Iniciar grabación real de micrófono
+      try {
+        const perm = await Audio.requestPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permiso de micrófono', 'Permite el acceso al micrófono en los ajustes para grabar notas de voz.');
+          return;
+        }
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.LOW_QUALITY
+        );
+        recordingInstanceRef.current = recording;
+        setRecordingAudio(true);
+        setRecordSeconds(0);
+      } catch (e) {
+        // Fallback
+        setRecordingAudio(true);
+        setRecordSeconds(0);
+      }
     } else {
+      // Detener grabación y enviar audio real M4A en base64
       const dur = Math.max(1, recordSeconds);
       setRecordingAudio(false);
+
+      if (recordingInstanceRef.current) {
+        try {
+          await recordingInstanceRef.current.stopAndUnloadAsync();
+          const uri = recordingInstanceRef.current.getURI();
+          recordingInstanceRef.current = null;
+          if (uri) {
+            const b64 = await FileSystem.readAsStringAsync(uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            const audioDataUri = `data:audio/m4a;base64,${b64}`;
+            onSendMessage({
+              text: `🎤 Nota de voz (${dur}s)`,
+              mediaUri: audioDataUri,
+              mediaType: 'audio',
+              ephemeral: ephemeralMode,
+            });
+            setText('');
+            return;
+          }
+        } catch (err) {
+          recordingInstanceRef.current = null;
+        }
+      }
+
+      // Fallback si no hubo stream de micrófono directo
       const audioContent = text.trim() || `Mensaje de voz de ${userProfile.name || userProfile.phone || 'NexChat'}`;
       onSendMessage({
         text: text.trim() ? `🎤 "${text.trim()}" (${dur}s)` : `🎤 Nota de voz (${dur}s)`,

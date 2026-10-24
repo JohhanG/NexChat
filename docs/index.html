@@ -6,19 +6,19 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>NexChat Global — Descarga Oficial APK</title>
+  <title>NexChat Global — Mensajería Instantánea Libre y Segura</title>
   <link rel="icon" type="image/png" href="./icon.png" />
   <style>
     :root {
-      --bg: #0E1621;
-      --card: #17212B;
-      --card-alt: #1E2C3A;
-      --border: #22303F;
+      --bg: #0B141A;
+      --card: #111B21;
+      --card-alt: #1F2C34;
+      --border: #222E35;
       --primary: #00A884;
-      --primary-hover: #059669;
-      --accent: #38BDF8;
-      --text: #F1F5F9;
-      --muted: #8A9AA9;
+      --primary-hover: #06CF9C;
+      --accent: #53BDEB;
+      --text: #E9EDEF;
+      --muted: #8696A0;
     }
     * {
       box-sizing: border-box;
@@ -27,13 +27,13 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     body {
-      background: radial-gradient(circle at 50% 0%, #09352c 0%, var(--bg) 55%);
+      background: radial-gradient(circle at 50% 0%, #0c3629 0%, var(--bg) 60%);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 36px 18px 64px;
+      padding: 32px 18px 60px;
     }
     .top-pill {
       display: inline-flex;
@@ -47,7 +47,7 @@
       font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.6px;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       text-transform: uppercase;
     }
     .dot-live {
@@ -66,26 +66,26 @@
     }
     .subtitle {
       color: var(--muted);
-      max-width: 600px;
+      max-width: 620px;
       text-align: center;
       font-size: 16px;
       line-height: 1.6;
-      margin-bottom: 30px;
+      margin-bottom: 28px;
     }
     .hero-card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 26px;
-      padding: 32px 26px;
+      padding: 32px 24px;
       width: 100%;
-      max-width: 560px;
+      max-width: 540px;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
       text-align: center;
-      margin-bottom: 30px;
+      margin-bottom: 32px;
     }
     .app-logo {
-      width: 96px;
-      height: 96px;
+      width: 94px;
+      height: 94px;
       border-radius: 24px;
       object-fit: cover;
       margin: 0 auto 16px;
@@ -99,8 +99,8 @@
       color: var(--accent);
       font-size: 12px;
       font-weight: 800;
-      padding: 4px 12px;
-      border-radius: 10px;
+      padding: 5px 14px;
+      border-radius: 12px;
       margin-top: 6px;
       border: 1px solid var(--border);
     }
@@ -125,22 +125,14 @@
       transform: translateY(-2px);
       box-shadow: 0 16px 34px rgba(0, 168, 132, 0.5);
     }
-    .btn-secondary {
-      display: block;
-      width: 100%;
-      background: var(--card-alt);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-weight: 800;
-      font-size: 14px;
-      padding: 14px 18px;
-      border-radius: 14px;
-      text-decoration: none;
+    .file-specs {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
       margin-top: 12px;
-      transition: background 0.15s ease;
-    }
-    .btn-secondary:hover {
-      background: #253646;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
     }
     .qr-section {
       margin-top: 24px;
@@ -162,12 +154,64 @@
       height: 150px;
       display: block;
     }
+    .steps-section {
+      width: 100%;
+      max-width: 760px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 24px;
+      margin-bottom: 30px;
+    }
+    .steps-title {
+      font-size: 18px;
+      font-weight: 900;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #34D399;
+    }
+    .step-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .step-item:last-child {
+      margin-bottom: 0;
+    }
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 14px;
+      background: var(--primary);
+      color: #FFFFFF;
+      font-weight: 900;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-text h4 {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .step-text p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+      line-height: 1.5;
+    }
     .features {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 14px;
       width: 100%;
       max-width: 820px;
+      margin-bottom: 30px;
     }
     .feat-box {
       background: var(--card);
@@ -186,44 +230,82 @@
       color: var(--muted);
       line-height: 1.55;
     }
+    .faq-section {
+      width: 100%;
+      max-width: 760px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 24px;
+      margin-bottom: 30px;
+    }
+    .faq-title {
+      font-size: 18px;
+      font-weight: 900;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .faq-item {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .faq-q {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .faq-a {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
     .footer {
-      margin-top: 40px;
       color: var(--muted);
       font-size: 12px;
       text-align: center;
+      line-height: 1.6;
     }
   </style>
 </head>
 <body>
   <div class="top-pill">
     <span class="dot-live"></span>
-    Nube 24/7 Activa • Cifrado E2EE SHA-256
+    Servidores 24/7 Activos • Cifrado E2EE
   </div>
 
   <h1>NexChat Global</h1>
   <p class="subtitle">
-    Mensajería instantánea global con cifrado de extremo a extremo, estados de 24 horas, grupos interactivos, notas de voz, llamadas y actualizaciones automáticas OTA.
+    Mensajería instantánea moderna con cifrado de extremo a extremo, notas de voz de alta fidelidad, estados de 24 horas, salas grupales y llamadas seguras.
   </p>
 
   <div class="hero-card">
     <img class="app-logo" src="./icon.png" alt="NexChat Oficial" />
-    <h2 style="font-size: 23px; font-weight: 900;">NexChat Oficial (Android APK)</h2>
-    <span class="version-tag">Versión 3.5 Global • Auto-Actualizable (OTA)</span>
+    <h2 style="font-size: 23px; font-weight: 900;">Descargar NexChat para Android</h2>
+    <span class="version-tag">Instalador Oficial APK • Android 8.0 o superior</span>
     <p style="color: var(--muted); font-size: 13px; margin-top: 10px; line-height: 1.5;">
-      Descarga e instala la aplicación una sola vez. Todas las mejoras y nuevas funciones llegan automáticamente a tu celular sin volver a reinstalar.
+      Instala la aplicación oficial directamente en tu celular. Todas las actualizaciones y mejoras llegan de forma automática e instantánea.
     </p>
 
-    <a class="btn-apk" href="https://expo.dev/artifacts/eas/Z9MezVA879L4sP9PuMq0s2O21Ie58hUQVQlAP14SZVU.apk" target="_blank" rel="noopener">
-      📲 Descargar APK Oficial para Android
+    <a id="btnDescargaApk" class="btn-apk" href="https://expo.dev/artifacts/eas/Z9MezVA879L4sP9PuMq0s2O21Ie58hUQVQlAP14SZVU.apk" target="_blank" rel="noopener">
+      📲 Descargar Instalador (.APK)
     </a>
 
-    <a class="btn-secondary" href="https://expo.dev/accounts/johhan_g/projects/nexchat/builds/0d0cc4d4-c957-41f2-a617-444da3f6e8fc" target="_blank" rel="noopener">
-      ☁️ Ver Instalador en Expo Cloud
-    </a>
+    <div class="file-specs">
+      <span>⚡ Descarga Directa</span>
+      <span>•</span>
+      <span>🔒 100% Sin Publicidad</span>
+      <span>•</span>
+      <span>🔄 Auto-Actualizable</span>
+    </div>
 
     <div class="qr-section">
       <p style="font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;">
-        O escanea con la cámara de tu celular para descargar el APK
+        O escanea con la cámara de tu celular para descargar
       </p>
       <div class="qr-box">
         <img
@@ -234,27 +316,80 @@
     </div>
   </div>
 
+  <div class="steps-section">
+    <div class="steps-title">
+      <span>🚀</span>
+      <span>Cómo instalar NexChat en 3 pasos:</span>
+    </div>
+    <div class="step-item">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        <h4>Descarga el archivo APK</h4>
+        <p>Presiona el botón verde de descarga desde tu celular o escanea el código QR.</p>
+      </div>
+    </div>
+    <div class="step-item">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        <h4>Permite la instalación</h4>
+        <p>Al ser una descarga directa segura, Android preguntará si deseas instalarla. Toca en <strong>"Instalar de todos modos"</strong> o <strong>"Permitir desde esta fuente"</strong>.</p>
+      </div>
+    </div>
+    <div class="step-item">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        <h4>Abre la app y empieza a chatear</h4>
+        <p>Ingresa tu número telefónico, asigna tu PIN de seguridad personal y conecta con tus amigos al instante.</p>
+      </div>
+    </div>
+  </div>
+
   <div class="features">
     <div class="feat-box">
-      <h3>🔒 Blindaje E2EE + PIN 2FA</h3>
-      <p>Conversaciones protegidas con huellas criptográficas de 40 dígitos (SHA-256), bloqueo por PIN y mensajes temporales.</p>
+      <h3>🔒 Cifrado de Extremo a Extremo</h3>
+      <p>Tus conversaciones están blindadas con criptografía de 40 dígitos (SHA-256) y protección biométrica o por PIN.</p>
     </div>
     <div class="feat-box">
-      <h3>🌍 Directorio Mundial y Grupos</h3>
-      <p>Agrega contactos de cualquier país del mundo, verifica quién está en línea en tiempo real y crea grupos con un solo toque.</p>
+      <h3>🎙️ Notas de Voz y Multimedia HD</h3>
+      <p>Envía notas de voz grabadas directamente desde tu micrófono y fotografías nítidas con compresión de alta velocidad.</p>
     </div>
     <div class="feat-box">
       <h3>⭕ Estados de 24 Horas</h3>
-      <p>Comparte fotos, textos y emojis que se auto-eliminan a las 24 horas y revisa la lista exacta de quiénes vieron tu estado.</p>
+      <p>Publica fotos, frases y emojis que desaparecen automáticamente al cumplir 24 horas con registro en vivo de vistas.</p>
     </div>
     <div class="feat-box">
-      <h3>🚀 Actualizaciones en la Nube (OTA)</h3>
-      <p>Recibe todas las mejoras de diseño y nuevas funciones directamente desde la nube sin tener que reinstalar el APK.</p>
+      <h3>👥 Grupos y Canales Libres</h3>
+      <p>Organiza grupos con tus amigos o familia, añade miembros con un toque y administra participantes con total libertad.</p>
+    </div>
+    <div class="feat-box">
+      <h3>🟢 Conexión en Tiempo Real</h3>
+      <p>Consulta en tiempo real quién está en línea y la última hora de conexión con sincronización automática 24/7.</p>
+    </div>
+    <div class="feat-box">
+      <h3>🛡️ Privacidad Total</h3>
+      <p>Tus mensajes solo te pertenecen a ti. Vacía o elimina mensajes en tu dispositivo con privacidad garantizada.</p>
+    </div>
+  </div>
+
+  <div class="faq-section">
+    <div class="faq-title">Preguntas Frecuentes</div>
+    <div class="faq-item">
+      <div class="faq-q">¿La aplicación tiene costo o anuncios?</div>
+      <div class="faq-a">No. NexChat es completamente gratuita, sin publicidad invasiva y sin suscripciones.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">¿Cómo se actualiza la aplicación?</div>
+      <div class="faq-a">NexChat cuenta con un motor de actualización en la nube. Todas las mejoras se descargan solas sin que tengas que volver a instalar el archivo.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">¿Funciona en cualquier teléfono Android?</div>
+      <div class="faq-a">Sí, es compatible con teléfonos y tabletas con Android 8.0 o superior.</div>
     </div>
   </div>
 
   <div class="footer">
-    © 2026 NexChat Global • Seguridad Criptográfica E2EE 24/7
+    NexChat Global • Plataforma de Mensajería Instantánea Segura 24/7<br/>
+    Protección de Datos y Privacidad Criptográfica
   </div>
 </body>
 </html>

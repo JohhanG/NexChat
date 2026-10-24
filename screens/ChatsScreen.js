@@ -38,6 +38,7 @@ export default function ChatsScreen({
   onCreateDirectChat,
   onCreateGroupChat,
   onEditContactName,
+  onClearChat,
   onDeleteChat,
 }) {
   const { colors } = useTheme();
@@ -667,74 +668,222 @@ export default function ChatsScreen({
         <Ionicons name="person-add" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* MODAL RÁPIDO PARA EDITAR NOMBRE DEL CONTACTO O ELIMINAR CHAT */}
+      {/* MENÚ DE OPCIONES DEL CHAT ESTILO WHATSAPP (EDITAR, VACIAR, ELIMINAR CHAT) */}
       <Modal
         visible={!!chatEditando}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setChatEditando(null)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', padding: 22 }}>
-          <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Ionicons name="create-outline" size={20} color={colors.primary} />
-              <Text style={{ color: colors.text, fontSize: 17, fontWeight: '900' }}>
-                Editar Contacto
-              </Text>
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>NOMBRE VISIBLE</Text>
-            <TextInput
-              style={[styles.textInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-              value={nuevoNombreEditado}
-              onChangeText={setNuevoNombreEditado}
-              placeholder="Escribe el nuevo nombre..."
-              placeholderTextColor={colors.textMuted}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setChatEditando(null)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => {}}
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 20,
+              paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+              borderTopWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            {/* Tirador superior */}
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: colors.textMuted + '50',
+                alignSelf: 'center',
+                marginBottom: 16,
+              }}
             />
 
-            {chatEditando?.peerPhone ? (
-              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginTop: 8 }}>
-                Teléfono: {chatEditando.peerPhone}
-              </Text>
-            ) : null}
+            {/* Ficha rápida del contacto */}
+            {chatEditando && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingBottom: 16,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  marginBottom: 16,
+                }}
+              >
+                {renderAvatar(chatEditando.avatar, chatEditando.official, 48, chatEditando.name, false)}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>
+                    {chatEditando.name}
+                  </Text>
+                  <Text style={{ color: colors.primary, fontSize: 12, marginTop: 2 }}>
+                    {chatEditando.peerPhone || (chatEditando.isGroup ? 'Grupo de chat' : 'NexChat Oficial')}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setChatEditando(null)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            )}
 
+            {/* 1. Editar Nombre del Contacto */}
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '900', letterSpacing: 0.5, marginBottom: 6 }}>
+                EDITAR NOMBRE DEL CONTACTO
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    { flex: 1, backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border },
+                  ]}
+                  value={nuevoNombreEditado}
+                  onChangeText={setNuevoNombreEditado}
+                  placeholder="Nombre visible..."
+                  placeholderTextColor={colors.textMuted}
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    if (nuevoNombreEditado.trim() && onEditContactName && chatEditando) {
+                      onEditContactName(chatEditando.id, nuevoNombreEditado.trim());
+                      Alert.alert('Nombre actualizado', `Se guardó "${nuevoNombreEditado.trim()}".`);
+                    }
+                    setChatEditando(null);
+                  }}
+                  style={{
+                    backgroundColor: colors.primary,
+                    paddingHorizontal: 16,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* 2. Vaciar Chat (Solo para mí) */}
             <TouchableOpacity
               onPress={() => {
-                if (nuevoNombreEditado.trim() && onEditContactName && chatEditando) {
-                  onEditContactName(chatEditando.id, nuevoNombreEditado.trim());
+                if (chatEditando && onClearChat) {
+                  Alert.alert(
+                    '¿Vaciar este chat?',
+                    'Los mensajes se borrarán únicamente de tu teléfono. La otra persona conservará la conversación intacta.',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Vaciar solo para mí',
+                        style: 'destructive',
+                        onPress: () => {
+                          onClearChat(chatEditando.id);
+                          setChatEditando(null);
+                          Alert.alert('Chat vaciado', 'Los mensajes se borraron solo en tu teléfono.');
+                        },
+                      },
+                    ]
+                  );
                 }
-                setChatEditando(null);
               }}
-              style={[styles.submitBtn, { backgroundColor: colors.primary, marginTop: 16 }]}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: colors.inputBg,
+                marginBottom: 10,
+              }}
             >
-              <Text style={styles.submitBtnText}>Guardar Nuevo Nombre</Text>
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: 'rgba(2,132,199,0.14)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#0284C7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>Vaciar chat</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                  Borra los mensajes únicamente para ti
+                </Text>
+              </View>
             </TouchableOpacity>
 
+            {/* 3. Eliminar Chat (Diseño WhatsApp) */}
             <TouchableOpacity
               onPress={() => {
-                if (onDeleteChat && chatEditando) {
-                  onDeleteChat(chatEditando.id);
+                if (chatEditando && onDeleteChat) {
+                  Alert.alert(
+                    '¿Eliminar chat?',
+                    'Esta conversación se eliminará de tu lista de chats.',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Eliminar chat',
+                        style: 'destructive',
+                        onPress: () => {
+                          onDeleteChat(chatEditando.id);
+                          setChatEditando(null);
+                        },
+                      },
+                    ]
+                  );
                 }
-                setChatEditando(null);
               }}
-              style={[
-                styles.submitBtn,
-                { backgroundColor: 'rgba(239,68,68,0.14)', borderWidth: 1, borderColor: '#EF4444', marginTop: 10 },
-              ]}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: 'rgba(239,68,68,0.1)',
+                marginBottom: 14,
+              }}
             >
-              <Text style={{ color: '#EF4444', fontSize: 14, fontWeight: '900' }}>
-                Eliminar Contacto / Chat
-              </Text>
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: 'rgba(239,68,68,0.16)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#EF4444', fontSize: 14, fontWeight: '800' }}>Eliminar chat</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                  Quita la conversación de tu lista
+                </Text>
+              </View>
             </TouchableOpacity>
 
+            {/* 4. Cancelar */}
             <TouchableOpacity
               onPress={() => setChatEditando(null)}
-              style={{ marginTop: 14, paddingVertical: 8, alignItems: 'center' }}
+              style={{ paddingVertical: 10, alignItems: 'center' }}
             >
               <Text style={{ color: colors.textMuted, fontSize: 14, fontWeight: '800' }}>Cancelar</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* PANTALLA COMPLETA ESTILO WHATSAPP & TELEGRAM: CONTACTOS, AGREGAR PERSONA Y CREAR GRUPO */}
