@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, StatusBar,
   SafeAreaView, Modal, TextInput, Alert, Platform
@@ -85,25 +85,77 @@ function MainApp() {
   // Banner de actualización OTA
   const [otaAvailable, setOtaAvailable] = useState(false);
 
+  // Registro persistente de mensajes y chats eliminados para que nunca reaparezcan al recargar
+  const deletedMsgIdsRef = useRef(new Set());
+  const clearedChatsRef = useRef({});
+
+  const persistDeletedMsgIds = async (idsSet) => {
+    try {
+      await AsyncStorage.setItem('@nexchat_deleted_msgs_v3', JSON.stringify(Array.from(idsSet)));
+    } catch (e) {}
+  };
+
+  const persistClearedChats = async (mapObj) => {
+    try {
+      await AsyncStorage.setItem('@nexchat_cleared_chats_v3', JSON.stringify(mapObj));
+    } catch (e) {}
+  };
+
   // 1. Cargar sesión persistente y verificar OTA
   useEffect(() => {
     (async () => {
       try {
-        const savedUser = await AsyncStorage.getItem('@nexchat_user_v3');
-        const savedChats = await AsyncStorage.getItem('@nexchat_chats_v3');
-        const savedCalls = await AsyncStorage.getItem('@nexchat_calls_v3');
+        const [
+          savedUser,
+          savedChats,
+          savedCalls,
+          savedDeletedMsgs,
+          savedClearedChats,
+        ] = await Promise.all([
+          AsyncStorage.getItem('@nexchat_user_v3'),
+          AsyncStorage.getItem('@nexchat_chats_v3'),
+          AsyncStorage.getItem('@nexchat_calls_v3'),
+          AsyncStorage.getItem('@nexchat_deleted_msgs_v3'),
+          AsyncStorage.getItem('@nexchat_cleared_chats_v3'),
+        ]);
 
-        if (savedUser) {
-          setUserProfile(JSON.parse(savedUser));
-        }
-        if (savedChats) {
-          const parsed = JSON.parse(savedChats);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setChats(parsed);
+        if (savedDeletedMsgs) {
+          const parsedDel = JSON.parse(savedDeletedMsgs);
+          if (Array.isArray(parsedDel)) {
+            deletedMsgIdsRef.current = new Set(parsedDel);
           }
         }
+        if (savedClearedChats) {
+          const parsedCleared = JSON.parse(savedClearedChats);
+          if (parsedCleared && typeof parsedCleared === 'object') {
+            clearedChatsRef.current = parsedCleared;
+          }
+        }
+
+        if (savedChats) {
+          const parsed = JSON.parse(savedChats);
+          if (Array.isArray(parsed)) {
+            const sanitized = parsed.map((c) => ({
+              ...c,
+              messages: (c.messages || []).filter((m) => !deletedMsgIdsRef.current.has(m.id)),
+            }));
+            setChats(sanitized);
+          }
+        } else {
+          // Filtrar incluso el canal oficial inicial si borraron algún mensaje de bienvenida
+          setChats(
+            CANAL_OFICIAL_INICIAL.map((c) => ({
+              ...c,
+              messages: (c.messages || []).filter((m) => !deletedMsgIdsRef.current.has(m.id)),
+            }))
+          );
+        }
+
         if (savedCalls) {
           setCallHistory(JSON.parse(savedCalls));
+        }
+        if (savedUser) {
+          setUserProfile(JSON.parse(savedUser));
         }
       } catch (e) {
         // Ignorar errores de lectura inicial
@@ -126,12 +178,12 @@ function MainApp() {
     })();
   }, []);
 
-  // Guardar chats cuando cambien
+  // Guardar chats cuando cambien (solo después de terminar la carga inicial)
   useEffect(() => {
-    if (userProfile && chats.length > 0) {
+    if (!loadingSession && userProfile) {
       AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(chats)).catch(() => {});
     }
-  }, [chats, userProfile]);
+  }, [chats, userProfile, loadingSession]);
 
   // Cronómetro de llamada activa
   useEffect(() => {
@@ -152,6 +204,24 @@ function MainApp() {
 
     const cargarDatosNube = async () => {
       try {
+        // Asegurar que la lista de eliminados esté cargada antes de sincronizar con la nube
+        const [rawDelMsgs, rawClearedChats] = await Promise.all([
+          AsyncStorage.getItem('@nexchat_deleted_msgs_v3'),
+          AsyncStorage.getItem('@nexchat_cleared_chats_v3'),
+        ]);
+        if (rawDelMsgs) {
+          const parsedDel = JSON.parse(rawDelMsgs);
+          if (Array.isArray(parsedDel)) {
+            parsedDel.forEach((id) => deletedMsgIdsRef.current.add(id));
+          }
+        }
+        if (rawClearedChats) {
+          const parsedCleared = JSON.parse(rawClearedChats);
+          if (parsedCleared && typeof parsedCleared === 'object') {
+            clearedChatsRef.current = { ...clearedChatsRef.current, ...parsedCleared };
+          }
+        }
+
         // Cargar estados de las últimas 24h
         const { data: stData } = await supabase
           .from('nexchat_statuses')
@@ -187,11 +257,29 @@ function MainApp() {
         { event: 'INSERT', schema: 'public', table: 'nexchat_messages' },
         (payload) => {
           const nuevo = payload.new;
-          if (!nuevo) return;
+          if (!nuevo || deletedMsgIdsRef.current.has(nuevo.id)) return;
           const roomId = nuevo.chat_id || nuevo.room_id || '';
           if (nuevo.sender_phone !== userProfile.phone && roomId.includes(myCleanDigits)) {
             recibirMensajeEnVivo(nuevo);
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'nexchat_messages' },
+        (payload) => {
+          const eliminado = payload.old;
+          if (!eliminado?.id) return;
+          deletedMsgIdsRef.current.add(eliminado.id);
+          persistDeletedMsgIds(deletedMsgIdsRef.current);
+          setChats((prev) => {
+            const updated = prev.map((c) => ({
+              ...c,
+              messages: (c.messages || []).filter((m) => m.id !== eliminado.id),
+            }));
+            AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+            return updated;
+          });
         }
       )
       .on(
@@ -202,29 +290,20 @@ function MainApp() {
           if (!actualizado) return;
           const roomId = actualizado.chat_id || actualizado.room_id || '';
           if (roomId.includes(myCleanDigits)) {
-            setChats((prev) =>
-              prev.map((c) =>
+            deletedMsgIdsRef.current.add(actualizado.id);
+            persistDeletedMsgIds(deletedMsgIdsRef.current);
+            setChats((prev) => {
+              const updated = prev.map((c) =>
                 c.id === roomId
                   ? {
                       ...c,
-                      messages: (c.messages || []).map((m) =>
-                        m.id === actualizado.id
-                          ? {
-                              ...m,
-                              text:
-                                actualizado.sender_phone === userProfile.phone
-                                  ? '🚫 Eliminaste este mensaje'
-                                  : '🚫 Este mensaje fue eliminado',
-                              mediaUri: null,
-                              mediaType: 'text',
-                              deletedForAll: true,
-                            }
-                          : m
-                      ),
+                      messages: (c.messages || []).filter((m) => m.id !== actualizado.id),
                     }
                   : c
-              )
-            );
+              );
+              AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+              return updated;
+            });
           }
         }
       )
@@ -249,6 +328,12 @@ function MainApp() {
       const mapa = [...prevChats];
       lista.forEach((m) => {
         const roomId = m.chat_id || m.room_id;
+        // Ignorar cualquier mensaje que el usuario haya eliminado o vaciado
+        if (deletedMsgIdsRef.current.has(m.id)) return;
+        const clearedTs = clearedChatsRef.current[roomId];
+        if (clearedTs && m.timestamp && Number(m.timestamp) <= Number(clearedTs)) return;
+        if (String(m.content || '').includes('Este mensaje fue eliminado')) return;
+
         const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
         const hora = m.time || new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const msgObj = {
@@ -286,6 +371,7 @@ function MainApp() {
           });
         }
       });
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(mapa)).catch(() => {});
       return mapa;
     });
   };
@@ -600,56 +686,52 @@ function MainApp() {
     }
   };
 
-  // 11. Eliminar mensaje para mí (solo en mi teléfono)
+  // 11. Eliminar mensaje para mí (solo en mi teléfono, persistente para que nunca vuelva a salir)
   const handleDeleteMessageForMe = (chatId, msgId) => {
-    setChats((prev) =>
-      prev.map((c) =>
+    deletedMsgIdsRef.current.add(msgId);
+    persistDeletedMsgIds(deletedMsgIdsRef.current);
+
+    setChats((prev) => {
+      const updated = prev.map((c) =>
         c.id === chatId
           ? { ...c, messages: (c.messages || []).filter((m) => m.id !== msgId) }
           : c
-      )
-    );
+      );
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
   };
 
-  // 12. Eliminar mensaje para todos (en mi teléfono y en Supabase 24/7 para los demás)
+  // 12. Eliminar mensaje para todos (borra en mi teléfono y elimina de Supabase 24/7 para todos)
   const handleDeleteMessageForAll = async (chatId, msgId) => {
-    setChats((prev) =>
-      prev.map((c) =>
+    deletedMsgIdsRef.current.add(msgId);
+    persistDeletedMsgIds(deletedMsgIdsRef.current);
+
+    setChats((prev) => {
+      const updated = prev.map((c) =>
         c.id === chatId
-          ? {
-              ...c,
-              messages: (c.messages || []).map((m) =>
-                m.id === msgId
-                  ? {
-                      ...m,
-                      text: '🚫 Eliminaste este mensaje',
-                      mediaUri: null,
-                      mediaType: 'text',
-                      deletedForAll: true,
-                    }
-                  : m
-              ),
-            }
+          ? { ...c, messages: (c.messages || []).filter((m) => m.id !== msgId) }
           : c
-      )
-    );
+      );
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
 
     try {
       await supabase
         .from('nexchat_messages')
-        .update({
-          content: '🚫 Este mensaje fue eliminado',
-          type: 'text',
-        })
+        .delete()
         .eq('id', msgId);
     } catch (e) {}
   };
 
   // 13. Editar nombre de un contacto o grupo
   const handleEditContactName = async (chatId, newName) => {
-    setChats((prev) =>
-      prev.map((c) => (c.id === chatId ? { ...c, name: newName } : c))
-    );
+    setChats((prev) => {
+      const updated = prev.map((c) => (c.id === chatId ? { ...c, name: newName } : c));
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
     try {
       await supabase
         .from('nexchat_chats')
@@ -658,18 +740,52 @@ function MainApp() {
     } catch (e) {}
   };
 
-  // 14. Vaciar o eliminar un chat
-  const handleClearChat = (chatId) => {
-    setChats((prev) =>
-      prev.map((c) => (c.id === chatId ? { ...c, messages: [] } : c))
-    );
+  // 14. Vaciar o eliminar un chat permanentemente
+  const handleClearChat = async (chatId) => {
+    clearedChatsRef.current[chatId] = Date.now() + 5000;
+    persistClearedChats(clearedChatsRef.current);
+
+    setChats((prev) => {
+      const target = prev.find((c) => c.id === chatId);
+      if (target?.messages) {
+        target.messages.forEach((m) => deletedMsgIdsRef.current.add(m.id));
+        persistDeletedMsgIds(deletedMsgIdsRef.current);
+      }
+      const updated = prev.map((c) => (c.id === chatId ? { ...c, messages: [] } : c));
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+
+    try {
+      await supabase.from('nexchat_messages').delete().eq('chat_id', chatId);
+    } catch (e) {}
   };
 
-  const handleDeleteChat = (chatId) => {
-    setChats((prev) => prev.filter((c) => c.id !== chatId));
+  const handleDeleteChat = async (chatId) => {
+    clearedChatsRef.current[chatId] = Date.now() + 5000;
+    persistClearedChats(clearedChatsRef.current);
+
+    setChats((prev) => {
+      const target = prev.find((c) => c.id === chatId);
+      if (target?.messages) {
+        target.messages.forEach((m) => deletedMsgIdsRef.current.add(m.id));
+        persistDeletedMsgIds(deletedMsgIdsRef.current);
+      }
+      const updated = prev.filter((c) => c.id !== chatId);
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+
     if (selectedChatId === chatId) {
       setSelectedChatId(null);
     }
+
+    try {
+      await supabase.from('nexchat_messages').delete().eq('chat_id', chatId);
+      if (chatId !== 'official_nexchat') {
+        await supabase.from('nexchat_chats').delete().eq('id', chatId);
+      }
+    } catch (e) {}
   };
 
   if (loadingSession) {
