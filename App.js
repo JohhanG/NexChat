@@ -54,7 +54,7 @@ const CANAL_OFICIAL_INICIAL = [
         id: 'welcome_2',
         sender: 'them',
         senderName: 'NexChat Oficial ✅',
-        text: '💡 Para chatear con tus amigos, toca el botón "+ Nuevo" arriba a la derecha e ingresa su número de celular.',
+        text: '💡 Para chatear con tus amigos, toca el botón "+ Nuevo Chat" arriba a la derecha o el botón flotante verde e ingresa su número de celular.',
         time: 'Ahora',
       },
     ],
@@ -147,6 +147,8 @@ function MainApp() {
   useEffect(() => {
     if (!userProfile?.phone) return;
 
+    const myCleanDigits = String(userProfile.phone || '').replace(/[^0-9]/g, '');
+
     const cargarDatosNube = async () => {
       try {
         // Cargar estados de las últimas 24h
@@ -158,15 +160,17 @@ function MainApp() {
         if (stData) setStatuses(stData);
 
         // Cargar mensajes donde participe mi número
-        const { data: msgData } = await supabase
-          .from('nexchat_messages')
-          .select('*')
-          .ilike('room_id', `%${userProfile.phone.replace(/[^0-9+]/g, '')}%`)
-          .order('created_at', { ascending: true })
-          .limit(200);
+        if (myCleanDigits.length >= 6) {
+          const { data: msgData } = await supabase
+            .from('nexchat_messages')
+            .select('*')
+            .ilike('chat_id', `%${myCleanDigits}%`)
+            .order('timestamp', { ascending: true })
+            .limit(200);
 
-        if (msgData && msgData.length > 0) {
-          integrarMensajesNube(msgData);
+          if (msgData && msgData.length > 0) {
+            integrarMensajesNube(msgData);
+          }
         }
       } catch (e) {
         // Modo offline-first respaldado
@@ -183,9 +187,8 @@ function MainApp() {
         (payload) => {
           const nuevo = payload.new;
           if (!nuevo) return;
-          const myClean = userProfile.phone.replace(/[^0-9+]/g, '');
-          // Si no es mi propio mensaje y la sala me incluye (o es un grupo donde estoy)
-          if (nuevo.sender_phone !== userProfile.phone && nuevo.room_id.includes(myClean)) {
+          const roomId = nuevo.chat_id || nuevo.room_id || '';
+          if (nuevo.sender_phone !== userProfile.phone && roomId.includes(myCleanDigits)) {
             recibirMensajeEnVivo(nuevo);
           }
         }
@@ -210,21 +213,22 @@ function MainApp() {
     setChats((prevChats) => {
       const mapa = [...prevChats];
       lista.forEach((m) => {
-        const plain = descifrarMensajeE2EE(m.ciphertext, m.room_id);
-        const hora = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const roomId = m.chat_id || m.room_id;
+        const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
+        const hora = m.time || new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const msgObj = {
           id: m.id,
           sender: m.sender_phone === userProfile.phone ? 'me' : 'them',
           senderPhone: m.sender_phone,
           senderName: m.sender_name,
           text: plain,
-          mediaUri: m.media_url,
-          mediaType: m.media_type,
-          ephemeral: m.ephemeral,
+          mediaUri: m.type === 'image' ? m.content : null,
+          mediaType: m.type !== 'text' ? m.type : null,
+          ephemeral: !!m.expires_at,
           time: hora,
         };
 
-        const idx = mapa.findIndex((c) => c.id === m.room_id);
+        const idx = mapa.findIndex((c) => c.id === roomId);
         if (idx >= 0) {
           const yaExiste = (mapa[idx].messages || []).some((x) => x.id === m.id);
           if (!yaExiste) {
@@ -236,11 +240,11 @@ function MainApp() {
         } else {
           // Crear el chat automáticamente si un amigo nos escribió
           mapa.push({
-            id: m.room_id,
+            id: roomId,
             name: m.sender_phone === userProfile.phone ? 'Chat Directo' : (m.sender_name || m.sender_phone),
             peerPhone: m.sender_phone,
             avatar: '👤',
-            isGroup: m.room_id.startsWith('group_'),
+            isGroup: String(roomId).startsWith('group_'),
             online: true,
             unread: 1,
             messages: [msgObj],
@@ -252,38 +256,39 @@ function MainApp() {
   };
 
   const recibirMensajeEnVivo = async (m) => {
-    const plain = descifrarMensajeE2EE(m.ciphertext, m.room_id);
-    const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const roomId = m.chat_id || m.room_id;
+    const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
+    const hora = m.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const msgObj = {
       id: m.id,
       sender: 'them',
       senderPhone: m.sender_phone,
       senderName: m.sender_name,
       text: plain,
-      mediaUri: m.media_url,
-      mediaType: m.media_type,
-      ephemeral: m.ephemeral,
+      mediaUri: m.type === 'image' ? m.content : null,
+      mediaType: m.type !== 'text' ? m.type : null,
+      ephemeral: !!m.expires_at,
       time: hora,
     };
 
     setChats((prev) => {
-      const idx = prev.findIndex((c) => c.id === m.room_id);
+      const idx = prev.findIndex((c) => c.id === roomId);
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx] = {
           ...updated[idx],
-          unread: selectedChatId === m.room_id ? 0 : (updated[idx].unread || 0) + 1,
+          unread: selectedChatId === roomId ? 0 : (updated[idx].unread || 0) + 1,
           messages: [...(updated[idx].messages || []), msgObj],
         };
         return updated;
       } else {
         return [
           {
-            id: m.room_id,
+            id: roomId,
             name: m.sender_name || m.sender_phone,
             peerPhone: m.sender_phone,
             avatar: '👤',
-            isGroup: m.room_id.startsWith('group_'),
+            isGroup: String(roomId).startsWith('group_'),
             online: true,
             unread: 1,
             messages: [msgObj],
@@ -299,7 +304,7 @@ function MainApp() {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: `💬 ${m.sender_name || m.sender_phone}`,
-            body: plain,
+            body: m.type === 'image' ? '📷 Foto cifrada E2EE' : plain,
             sound: true,
           },
           trigger: null,
@@ -337,8 +342,10 @@ function MainApp() {
           id: roomId,
           is_group: false,
           name: nuevoChat.name,
+          phone: peerPhone,
           avatar: nuevoChat.avatar,
-          members: [userProfile.phone, peerPhone],
+          status: `${peerPhone} • 🔒 E2EE`,
+          created_by: userProfile.phone,
         },
       ]);
     } catch (e) {}
@@ -376,8 +383,10 @@ function MainApp() {
           id: roomId,
           is_group: true,
           name: groupName,
+          phone: 'Grupo Global',
           avatar: '👥',
-          members: allMembers,
+          status: 'Grupo Global • 🔒 E2EE',
+          created_by: userProfile.phone,
         },
       ]);
     } catch (e) {}
@@ -425,17 +434,20 @@ function MainApp() {
 
     // Subir cifrado a Supabase 24/7
     try {
-      const cipher = cifrarMensajeE2EE(cleanText, selectedChatId);
+      const cipher = cifrarMensajeE2EE(mediaType === 'image' ? mediaUri : cleanText, selectedChatId);
       await supabase.from('nexchat_messages').insert([
         {
           id: msgId,
-          room_id: selectedChatId,
+          chat_id: selectedChatId,
+          sender_id: userProfile.id || userProfile.phone,
           sender_phone: userProfile.phone,
           sender_name: userProfile.name,
-          ciphertext: cipher,
-          media_url: mediaUri || null,
-          media_type: mediaType || null,
-          ephemeral: !!ephemeral,
+          type: mediaType || 'text',
+          content: cipher,
+          time: hora,
+          timestamp: Date.now(),
+          expires_at: ephemeral ? Date.now() + 15000 : null,
+          status: 'read',
         },
       ]);
     } catch (e) {}
@@ -443,14 +455,17 @@ function MainApp() {
 
   // 6. Publicar Estado de 24h
   const handlePublishStatus = async (content, bgColor) => {
+    const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newSt = {
       id: `st_${Date.now()}`,
+      user_id: userProfile.id || userProfile.phone,
       user_phone: userProfile.phone,
       user_name: userProfile.name,
-      avatar: userProfile.avatar?.startsWith('data:') ? '📸' : (userProfile.avatar || '😎'),
+      user_avatar: userProfile.avatar?.startsWith('data:') ? '📸' : (userProfile.avatar || '😎'),
       content: sanitizarEntrada(content),
       bg_color: bgColor,
-      created_at: new Date().toISOString(),
+      time: hora,
+      expires_at: Date.now() + 86400000,
     };
     setStatuses((prev) => [newSt, ...prev]);
 
@@ -524,7 +539,7 @@ function MainApp() {
       '@nexchat_user_v3',
       '@nexchat_chats_v3',
       '@nexchat_calls_v3',
-      '@nexchat_remember_login',
+      'nexchat_recordar_credenciales',
     ]);
     setChats(CANAL_OFICIAL_INICIAL);
     setCallHistory([]);
@@ -559,9 +574,12 @@ function MainApp() {
   if (!userProfile) {
     return (
       <LoginScreen
-        onLoginSuccess={(profile) => {
+        onLoginSuccess={async (profile) => {
           setUserProfile(profile);
           setChats(CANAL_OFICIAL_INICIAL);
+          try {
+            await AsyncStorage.setItem('@nexchat_user_v3', JSON.stringify(profile));
+          } catch {}
         }}
       />
     );
