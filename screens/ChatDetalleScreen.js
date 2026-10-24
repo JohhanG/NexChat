@@ -4,6 +4,7 @@ import {
   Image, KeyboardAvoidingView, Platform, Modal, Alert, StatusBar, BackHandler
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Speech from 'expo-speech';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
@@ -130,13 +131,7 @@ export default function ChatDetalleScreen({
     let timer;
     if (playingAudioId) {
       timer = setInterval(() => {
-        setAudioSeconds((s) => {
-          if (s >= 15) {
-            setPlayingAudioId(null);
-            return 0;
-          }
-          return s + 1;
-        });
+        setAudioSeconds((s) => s + 1);
       }, 1000);
     } else {
       setAudioSeconds(0);
@@ -144,12 +139,45 @@ export default function ChatDetalleScreen({
     return () => clearInterval(timer);
   }, [playingAudioId]);
 
-  const handleTogglePlayAudio = (msgId) => {
-    if (playingAudioId === msgId) {
+  const handleTogglePlayAudio = (msg) => {
+    if (!msg?.id) return;
+    if (playingAudioId === msg.id) {
+      try {
+        Speech.stop();
+      } catch {}
       setPlayingAudioId(null);
     } else {
-      setPlayingAudioId(msgId);
+      try {
+        Speech.stop();
+      } catch {}
+      setPlayingAudioId(msg.id);
       setAudioSeconds(0);
+
+      let textoParaHablar = '';
+      if (msg.mediaUri && String(msg.mediaUri).startsWith('VOICE::')) {
+        textoParaHablar = String(msg.mediaUri).replace('VOICE::', '');
+      } else if (msg.text && !msg.text.startsWith('🎤 Nota de voz')) {
+        textoParaHablar = msg.text.replace(/^🎤\s*/, '').replace(/\(\d+s\)$/, '').trim();
+      } else {
+        const sender = msg.sender === 'me' ? 'Tú' : (msg.senderName || 'Tu contacto');
+        textoParaHablar = `Nota de voz de ${sender}.`;
+      }
+
+      try {
+        Speech.speak(textoParaHablar, {
+          language: 'es-US',
+          pitch: 1.0,
+          rate: 0.95,
+          onDone: () => {
+            setPlayingAudioId(null);
+          },
+          onError: () => {
+            setPlayingAudioId(null);
+          },
+        });
+      } catch {
+        setPlayingAudioId(null);
+      }
     }
   };
 
@@ -245,12 +273,14 @@ export default function ChatDetalleScreen({
     } else {
       const dur = Math.max(1, recordSeconds);
       setRecordingAudio(false);
+      const audioContent = text.trim() || `Mensaje de voz de ${userProfile.name || userProfile.phone || 'NexChat'}`;
       onSendMessage({
-        text: `🎤 Nota de voz (${dur}s)`,
-        mediaUri: `audio_${dur}s`,
+        text: text.trim() ? `🎤 "${text.trim()}" (${dur}s)` : `🎤 Nota de voz (${dur}s)`,
+        mediaUri: `VOICE::${audioContent}`,
         mediaType: 'audio',
         ephemeral: ephemeralMode,
       });
+      setText('');
     }
   };
 
@@ -486,7 +516,7 @@ export default function ChatDetalleScreen({
               activeOpacity={0.88}
               onPress={() => {
                 if (isAudio) {
-                  handleTogglePlayAudio(msg.id);
+                  handleTogglePlayAudio(msg);
                 }
               }}
               onLongPress={() => setSelectedMessage(msg)}
@@ -511,7 +541,7 @@ export default function ChatDetalleScreen({
               {isAudio ? (
                 <View style={[styles.audioRow, { alignItems: 'center', paddingVertical: 4 }]}>
                   <TouchableOpacity
-                    onPress={() => handleTogglePlayAudio(msg.id)}
+                    onPress={() => handleTogglePlayAudio(msg)}
                     style={{ padding: 2 }}
                   >
                     <Ionicons
