@@ -74,20 +74,20 @@ export default function PerfilScreen({
             <Text style={[styles.changePhotoText, { color: colors.primary }]}>📷 Subir foto desde mi Galería</Text>
           </TouchableOpacity>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }}>
+          <View style={styles.emojiGrid}>
             {AVATARES.map((em) => (
               <TouchableOpacity
                 key={em}
                 onPress={() => setAvatar(em)}
                 style={[
                   styles.emojiOption,
-                  avatar === em && { borderColor: colors.primary, borderWidth: 2 },
+                  avatar === em && { borderColor: colors.primary, borderWidth: 2, backgroundColor: 'rgba(16,185,129,0.12)' },
                 ]}
               >
                 <Text style={{ fontSize: 22 }}>{em}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
 
           <View style={styles.phoneBadge}>
             <Text style={styles.phoneBadgeText}>📱 Línea Verificada: {userProfile.phone}</Text>
@@ -176,13 +176,19 @@ const styles = StyleSheet.create({
   },
   avatarImg: { width: 92, height: 92, borderRadius: 46 },
   changePhotoText: { fontSize: 13, fontWeight: '800', marginBottom: 4 },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    marginVertical: 10,
+  },
   emojiOption: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 4,
   },
   phoneBadge: {
     marginTop: 6,

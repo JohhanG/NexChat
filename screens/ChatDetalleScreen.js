@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
-  Image, KeyboardAvoidingView, Platform, Modal, Alert
+  Image, KeyboardAvoidingView, Platform, Modal, Alert, StatusBar
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
@@ -310,7 +310,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 10 : 10,
+    paddingBottom: 12,
     elevation: 4,
   },
   backBtn: { padding: 6, marginRight: 4 },
@@ -383,7 +384,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'android' ? 14 : 8,
     borderTopWidth: 1,
     gap: 6,
   },

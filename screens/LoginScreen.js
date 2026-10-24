@@ -10,6 +10,8 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -503,7 +505,12 @@ export default function LoginScreen({ onLoginSuccess }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0b141a' },
-  headerBanner: { backgroundColor: '#00a884', paddingVertical: 32, alignItems: 'center' },
+  headerBanner: {
+    backgroundColor: '#00a884',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 22 : 32,
+    paddingBottom: 26,
+    alignItems: 'center',
+  },
   logoCircle: { width: 58, height: 58, borderRadius: 18, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   brandTitle: { color: '#fff', fontSize: 26, fontWeight: '900', letterSpacing: 1 },
   brandSub: { color: '#d1fae5', fontSize: 11, marginTop: 3 },
