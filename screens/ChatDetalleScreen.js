@@ -35,6 +35,11 @@ export default function ChatDetalleScreen({
   onBack,
   onSendMessage,
   onStartCall,
+  onDeleteMessageForMe,
+  onDeleteMessageForAll,
+  onEditContactName,
+  onClearChat,
+  onDeleteChat,
 }) {
   const { colors } = useTheme();
   const [text, setText] = useState('');
@@ -43,8 +48,19 @@ export default function ChatDetalleScreen({
   const [ephemeralMode, setEphemeralMode] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+
+  // Modal de Editar Contacto / Info E2EE
   const [infoModal, setInfoModal] = useState(false);
+  const [editedName, setEditedName] = useState(chat.name || '');
+
+  // Modal de Eliminar Mensaje (Para mí / Para todos / Cancelar)
+  const [selectedMessage, setSelectedMessage] = useState(null);
+
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    setEditedName(chat.name || '');
+  }, [chat.name]);
 
   useEffect(() => {
     let interval;
@@ -123,6 +139,17 @@ export default function ChatDetalleScreen({
     }
   };
 
+  const handleSaveContactName = () => {
+    if (!editedName.trim()) {
+      Alert.alert('Nombre vacío', 'Escribe un nombre válido para el contacto.');
+      return;
+    }
+    if (onEditContactName) {
+      onEditContactName(chat.id, editedName.trim());
+    }
+    setInfoModal(false);
+  };
+
   const fingerprint = generarHuellaSeguridad(userProfile.phone, chat.peerPhone || chat.id);
   const esAvatarImagen =
     chat.avatar && (chat.avatar.startsWith('http') || chat.avatar.startsWith('data:image'));
@@ -138,7 +165,13 @@ export default function ChatDetalleScreen({
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.headerProfile} onPress={() => setInfoModal(true)}>
+        <TouchableOpacity
+          style={styles.headerProfile}
+          onPress={() => {
+            setEditedName(chat.name || '');
+            setInfoModal(true);
+          }}
+        >
           {esAvatarImagen ? (
             <Image source={{ uri: chat.avatar }} style={styles.avatarImg} />
           ) : (
@@ -155,8 +188,8 @@ export default function ChatDetalleScreen({
               {chat.official
                 ? 'Canal Oficial Verificado'
                 : chat.isGroup
-                ? `Grupo • ${(chat.members || []).length} miembros`
-                : `${chat.peerPhone || 'En línea'} • 🔒 E2EE`}
+                ? `Grupo • Toca para editar nombre`
+                : `${chat.peerPhone || 'En línea'} • Toca para editar`}
             </Text>
           </View>
         </TouchableOpacity>
@@ -169,6 +202,15 @@ export default function ChatDetalleScreen({
               </TouchableOpacity>
               <TouchableOpacity onPress={() => onStartCall(chat, 'audio')} style={styles.actionBtn}>
                 <Text style={styles.actionIcon}>📞</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditedName(chat.name || '');
+                  setInfoModal(true);
+                }}
+                style={styles.actionBtn}
+              >
+                <Text style={styles.actionIcon}>✏️</Text>
               </TouchableOpacity>
             </>
           )}
@@ -184,13 +226,13 @@ export default function ChatDetalleScreen({
         </View>
       </View>
 
-      {/* BANNER CIFRADO DE EXTREMO A EXTREMO */}
+      {/* BANNER CIFRADO E INSTRUCCIÓN DE ELIMINAR MENSAJE */}
       <TouchableOpacity
         onPress={() => setInfoModal(true)}
         style={[styles.e2eeBanner, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
         <Text style={[styles.e2eeText, { color: colors.textMuted }]}>
-          🔒 Los mensajes, stickers y llamadas están cifrados de extremo a extremo (SHA-256).
+          🔒 Cifrado E2EE (SHA-256) • 💡 Toca cualquier mensaje para eliminarlo (para ti o para todos)
           {ephemeralMode ? ' • ⏱️ Temp (15s) ACTIVO' : ''}
         </Text>
       </TouchableOpacity>
@@ -204,16 +246,25 @@ export default function ChatDetalleScreen({
       >
         {(chat.messages || []).map((msg) => {
           const isMe = msg.sender === 'me' || msg.senderPhone === userProfile.phone;
+          const isDeleted =
+            msg.deletedForAll ||
+            msg.text === '🚫 Eliminaste este mensaje' ||
+            msg.text === '🚫 Este mensaje fue eliminado';
+
           const isSticker =
-            msg.mediaType === 'sticker' ||
-            (msg.text && LISTA_STICKERS.some((s) => msg.text === `${s.icon} ${s.label}`));
+            !isDeleted &&
+            (msg.mediaType === 'sticker' ||
+              (msg.text && LISTA_STICKERS.some((s) => msg.text === `${s.icon} ${s.label}`)));
 
           if (isSticker) {
             const stickerEmoji = msg.mediaUri || (msg.text || '').split(' ')[0] || '😎🔥';
             const stickerTitle = (msg.text || '').replace(stickerEmoji, '').trim();
             return (
-              <View
+              <TouchableOpacity
                 key={msg.id}
+                activeOpacity={0.8}
+                onPress={() => setSelectedMessage(msg)}
+                onLongPress={() => setSelectedMessage(msg)}
                 style={[
                   styles.stickerBubble,
                   isMe ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
@@ -229,13 +280,16 @@ export default function ChatDetalleScreen({
                     {isMe && <Text style={styles.msgChecks}> ✓✓</Text>}
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           }
 
           return (
-            <View
+            <TouchableOpacity
               key={msg.id}
+              activeOpacity={0.82}
+              onPress={() => setSelectedMessage(msg)}
+              onLongPress={() => setSelectedMessage(msg)}
               style={[
                 styles.msgBubble,
                 isMe
@@ -249,27 +303,33 @@ export default function ChatDetalleScreen({
                 </Text>
               )}
 
-              {msg.mediaType === 'image' && msg.mediaUri ? (
+              {!isDeleted && msg.mediaType === 'image' && msg.mediaUri ? (
                 <Image source={{ uri: msg.mediaUri }} style={styles.msgImage} resizeMode="cover" />
               ) : null}
 
-              {msg.mediaType === 'audio' ? (
+              {!isDeleted && msg.mediaType === 'audio' ? (
                 <View style={styles.audioRow}>
                   <Text style={{ fontSize: 20 }}>▶️ 🎵</Text>
                   <View style={styles.audioWave} />
                 </View>
               ) : null}
 
-              <Text style={[styles.msgText, { color: isMe ? colors.bubbleOutText : colors.bubbleInText }]}>
+              <Text
+                style={[
+                  styles.msgText,
+                  { color: isMe ? colors.bubbleOutText : colors.bubbleInText },
+                  isDeleted && { fontStyle: 'italic', opacity: 0.72 },
+                ]}
+              >
                 {msg.text}
               </Text>
 
               <View style={styles.msgFooter}>
-                {msg.ephemeral && <Text style={{ fontSize: 10, marginRight: 4 }}>⏱️</Text>}
+                {msg.ephemeral && !isDeleted && <Text style={{ fontSize: 10, marginRight: 4 }}>⏱️</Text>}
                 <Text style={[styles.msgTime, { color: colors.textMuted }]}>{msg.time}</Text>
-                {isMe && <Text style={styles.msgChecks}> ✓✓</Text>}
+                {isMe && !isDeleted && <Text style={styles.msgChecks}> ✓✓</Text>}
               </View>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
@@ -402,25 +462,143 @@ export default function ChatDetalleScreen({
         </View>
       )}
 
-      {/* MODAL VERIFICACIÓN E2EE */}
+      {/* MODAL ELIMINAR MENSAJE (PARA MÍ / PARA TODOS / CANCELAR) ESTILO WHATSAPP */}
+      <Modal
+        visible={!!selectedMessage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedMessage(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.deleteModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.deleteModalTitle, { color: colors.text }]}>
+              ¿Deseas eliminar este mensaje?
+            </Text>
+
+            {selectedMessage && (
+              <View style={[styles.msgPreviewBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                <Text style={{ color: colors.textMuted, fontSize: 13 }} numberOfLines={2}>
+                  "{selectedMessage.text}"
+                </Text>
+              </View>
+            )}
+
+            {/* Opción 1: Eliminar para todos */}
+            <TouchableOpacity
+              onPress={() => {
+                if (onDeleteMessageForAll && selectedMessage) {
+                  onDeleteMessageForAll(chat.id, selectedMessage.id);
+                }
+                setSelectedMessage(null);
+              }}
+              style={[styles.deleteOptionBtn, { borderBottomWidth: 1, borderColor: colors.border }]}
+            >
+              <Text style={[styles.deleteOptionText, { color: '#EF4444' }]}>
+                🚫 Eliminar para todos
+              </Text>
+            </TouchableOpacity>
+
+            {/* Opción 2: Eliminar para mí */}
+            <TouchableOpacity
+              onPress={() => {
+                if (onDeleteMessageForMe && selectedMessage) {
+                  onDeleteMessageForMe(chat.id, selectedMessage.id);
+                }
+                setSelectedMessage(null);
+              }}
+              style={[styles.deleteOptionBtn, { borderBottomWidth: 1, borderColor: colors.border }]}
+            >
+              <Text style={[styles.deleteOptionText, { color: colors.primary }]}>
+                🗑️ Eliminar para mí
+              </Text>
+            </TouchableOpacity>
+
+            {/* Opción 3: Cancelar */}
+            <TouchableOpacity
+              onPress={() => setSelectedMessage(null)}
+              style={styles.deleteOptionBtn}
+            >
+              <Text style={[styles.deleteOptionText, { color: colors.textMuted }]}>
+                ✕ Cancelar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL EDITAR CONTACTO + VERIFICACIÓN E2EE */}
       <Modal visible={infoModal} transparent animationType="fade" onRequestClose={() => setInfoModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={{ fontSize: 38, textAlign: 'center', marginBottom: 8 }}>🛡️🔒</Text>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Verificación Criptográfica E2EE</Text>
-            <Text style={[styles.modalDesc, { color: colors.textMuted }]}>
-              Compara este código numérico de 40 dígitos con {chat.name}. Si coincide, nadie puede interceptar la conversación:
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              {chat.official ? '🛡️ Canal Oficial Verificado' : '✏️ Editar Contacto y Seguridad'}
             </Text>
 
+            {!chat.official && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>
+                  NOMBRE DEL CONTACTO / GRUPO
+                </Text>
+                <TextInput
+                  style={[styles.editInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                  value={editedName}
+                  onChangeText={setEditedName}
+                  placeholder="Nombre del contacto"
+                  placeholderTextColor={colors.textMuted}
+                />
+                {chat.peerPhone && (
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginTop: 6 }}>
+                    📱 Número: {chat.peerPhone}
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  onPress={handleSaveContactName}
+                  style={[styles.saveContactBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={{ color: '#052E16', fontWeight: '900', fontSize: 14 }}>
+                    💾 Guardar Nombre del Contacto
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={[styles.fieldLabel, { color: colors.textMuted, textAlign: 'center' }]}>
+              🔒 HUELLA CRIPTOGRÁFICA E2EE (40 DÍGITOS)
+            </Text>
             <View style={[styles.fingerprintBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
               <Text style={[styles.fingerprintText, { color: colors.primary }]}>{fingerprint}</Text>
             </View>
 
+            {!chat.official && (
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (onClearChat) onClearChat(chat.id);
+                    setInfoModal(false);
+                  }}
+                  style={[styles.dangerSmallBtn, { borderColor: colors.border, backgroundColor: colors.inputBg }]}
+                >
+                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800' }}>🧹 Vaciar chat</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    if (onDeleteChat) onDeleteChat(chat.id);
+                    setInfoModal(false);
+                  }}
+                  style={[styles.dangerSmallBtn, { borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.12)' }]}
+                >
+                  <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '800' }}>🗑️ Eliminar contacto</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <TouchableOpacity
               onPress={() => setInfoModal(false)}
-              style={[styles.closeModalBtn, { backgroundColor: colors.primary }]}
+              style={[styles.closeModalBtn, { backgroundColor: colors.inputBg }]}
             >
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Entendido</Text>
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -453,9 +631,9 @@ const styles = StyleSheet.create({
   avatarEmoji: { fontSize: 20 },
   headerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   headerStatus: { color: '#A7F3D0', fontSize: 11, marginTop: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionBtn: { padding: 8 },
-  actionIcon: { fontSize: 18 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  actionBtn: { padding: 7 },
+  actionIcon: { fontSize: 17 },
   e2eeBanner: {
     marginHorizontal: 14,
     marginTop: 10,
@@ -581,7 +759,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnText: { color: '#FFF' },
   sendIcon: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
   officialFooter: {
     paddingVertical: 14,
@@ -592,30 +769,76 @@ const styles = StyleSheet.create({
   officialFooterText: { fontSize: 12, textAlign: 'center' },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     justifyContent: 'center',
     padding: 22,
+  },
+  deleteModalCard: {
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+  },
+  deleteModalTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  msgPreviewBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  deleteOptionBtn: {
+    paddingVertical: 14,
+    alignItems: 'flex-end',
+    paddingHorizontal: 8,
+  },
+  deleteOptionText: {
+    fontSize: 15,
+    fontWeight: '900',
   },
   modalCard: {
     borderRadius: 20,
     padding: 22,
     borderWidth: 1,
   },
-  modalTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 8 },
-  modalDesc: { fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 14 },
+  fieldLabel: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+  },
+  saveContactBtn: {
+    marginTop: 12,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
   fingerprintBox: {
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 14,
   },
   fingerprintText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
     letterSpacing: 2,
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 22,
+  },
+  dangerSmallBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
   },
   closeModalBtn: {
     paddingVertical: 13,

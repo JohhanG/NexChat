@@ -195,6 +195,40 @@ function MainApp() {
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'nexchat_messages' },
+        (payload) => {
+          const actualizado = payload.new;
+          if (!actualizado) return;
+          const roomId = actualizado.chat_id || actualizado.room_id || '';
+          if (roomId.includes(myCleanDigits)) {
+            setChats((prev) =>
+              prev.map((c) =>
+                c.id === roomId
+                  ? {
+                      ...c,
+                      messages: (c.messages || []).map((m) =>
+                        m.id === actualizado.id
+                          ? {
+                              ...m,
+                              text:
+                                actualizado.sender_phone === userProfile.phone
+                                  ? '🚫 Eliminaste este mensaje'
+                                  : '🚫 Este mensaje fue eliminado',
+                              mediaUri: null,
+                              mediaType: 'text',
+                              deletedForAll: true,
+                            }
+                          : m
+                      ),
+                    }
+                  : c
+              )
+            );
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nexchat_statuses' },
         (payload) => {
           if (payload.new) {
@@ -565,6 +599,78 @@ function MainApp() {
     }
   };
 
+  // 11. Eliminar mensaje para mí (solo en mi teléfono)
+  const handleDeleteMessageForMe = (chatId, msgId) => {
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === chatId
+          ? { ...c, messages: (c.messages || []).filter((m) => m.id !== msgId) }
+          : c
+      )
+    );
+  };
+
+  // 12. Eliminar mensaje para todos (en mi teléfono y en Supabase 24/7 para los demás)
+  const handleDeleteMessageForAll = async (chatId, msgId) => {
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === chatId
+          ? {
+              ...c,
+              messages: (c.messages || []).map((m) =>
+                m.id === msgId
+                  ? {
+                      ...m,
+                      text: '🚫 Eliminaste este mensaje',
+                      mediaUri: null,
+                      mediaType: 'text',
+                      deletedForAll: true,
+                    }
+                  : m
+              ),
+            }
+          : c
+      )
+    );
+
+    try {
+      await supabase
+        .from('nexchat_messages')
+        .update({
+          content: '🚫 Este mensaje fue eliminado',
+          type: 'text',
+        })
+        .eq('id', msgId);
+    } catch (e) {}
+  };
+
+  // 13. Editar nombre de un contacto o grupo
+  const handleEditContactName = async (chatId, newName) => {
+    setChats((prev) =>
+      prev.map((c) => (c.id === chatId ? { ...c, name: newName } : c))
+    );
+    try {
+      await supabase
+        .from('nexchat_chats')
+        .update({ name: newName })
+        .eq('id', chatId);
+    } catch (e) {}
+  };
+
+  // 14. Vaciar o eliminar un chat
+  const handleClearChat = (chatId) => {
+    setChats((prev) =>
+      prev.map((c) => (c.id === chatId ? { ...c, messages: [] } : c))
+    );
+  };
+
+  const handleDeleteChat = (chatId) => {
+    setChats((prev) => prev.filter((c) => c.id !== chatId));
+    if (selectedChatId === chatId) {
+      setSelectedChatId(null);
+    }
+  };
+
   if (loadingSession) {
     return (
       <View style={[styles.loadingWrap, { backgroundColor: '#0B141A' }]}>
@@ -615,6 +721,11 @@ function MainApp() {
           onBack={() => setSelectedChatId(null)}
           onSendMessage={handleSendMessage}
           onStartCall={handleStartCall}
+          onDeleteMessageForMe={handleDeleteMessageForMe}
+          onDeleteMessageForAll={handleDeleteMessageForAll}
+          onEditContactName={handleEditContactName}
+          onClearChat={handleClearChat}
+          onDeleteChat={handleDeleteChat}
         />
       ) : (
         <>
@@ -652,6 +763,8 @@ function MainApp() {
                 }}
                 onCreateDirectChat={handleCreateDirectChat}
                 onCreateGroupChat={handleCreateGroupChat}
+                onEditContactName={handleEditContactName}
+                onDeleteChat={handleDeleteChat}
               />
             )}
 
