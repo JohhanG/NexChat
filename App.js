@@ -434,6 +434,10 @@ function MainApp() {
 
     // Subir cifrado a Supabase 24/7
     try {
+      const dbType =
+        mediaType === 'image' || mediaType === 'audio' || mediaType === 'file'
+          ? mediaType
+          : 'text';
       const cipher = cifrarMensajeE2EE(mediaType === 'image' ? mediaUri : cleanText, selectedChatId);
       await supabase.from('nexchat_messages').insert([
         {
@@ -442,7 +446,7 @@ function MainApp() {
           sender_id: userProfile.id || userProfile.phone,
           sender_phone: userProfile.phone,
           sender_name: userProfile.name,
-          type: mediaType || 'text',
+          type: dbType,
           content: cipher,
           time: hora,
           timestamp: Date.now(),
@@ -666,31 +670,24 @@ function MainApp() {
               />
             )}
 
-            {activeTab === 'seguridad' && (
-              <SeguridadScreen
-                userProfile={userProfile}
-                onLockNow={() => setIsLocked(true)}
-                onPanicWipe={handlePanicWipe}
-              />
-            )}
-
             {activeTab === 'perfil' && (
               <PerfilScreen
                 userProfile={userProfile}
                 onUpdateProfile={handleUpdateProfile}
                 onCheckUpdates={handleCheckUpdates}
                 onLogout={handleLogout}
+                onLockNow={() => setIsLocked(true)}
+                onPanicWipe={handlePanicWipe}
               />
             )}
           </View>
 
-          {/* BARRA DE NAVEGACIÓN INFERIOR */}
+          {/* BARRA DE NAVEGACIÓN INFERIOR (4 PESTAÑAS ESTILO WHATSAPP) */}
           <View style={[styles.tabBar, { backgroundColor: colors.tabBar, borderTopColor: colors.border }]}>
             {[
               { id: 'chats', label: 'Chats', icon: '💬' },
               { id: 'estados', label: 'Estados', icon: '⭕' },
               { id: 'llamadas', label: 'Llamadas', icon: '📞' },
-              { id: 'seguridad', label: 'Blindaje', icon: '🛡️' },
               { id: 'perfil', label: 'Perfil', icon: '👤' },
             ].map((t) => {
               const active = activeTab === t.id;

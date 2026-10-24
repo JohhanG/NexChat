@@ -5,9 +5,29 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
-import { cifrarMensajeE2EE, generarHuellaSeguridad } from '../lib/seguridad';
+import { generarHuellaSeguridad } from '../lib/seguridad';
 
-const EMOJIS_RAPIDOS = ['😀', '😂', '❤️', '🔥', '👍', '🙏', '🎉', '😎', '🤝', '🚀', '✨', '💯'];
+const LISTA_EMOJIS = [
+  '😀', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😇',
+  '🤔', '🤫', '🤭', '🙄', '😴', '🤯', '🥺', '😢', '😭', '😡',
+  '❤️', '🔥', '✨', '💯', '👍', '👏', '🙏', '🤝', '💪', '🙌',
+  '🎉', '🚀', '💎', '👑', '⚡', '🌟', '⚽', '🏆', '🎵', '🍕',
+];
+
+const LISTA_STICKERS = [
+  { id: 'stk_1', icon: '🐱💖', label: 'Gatito Amor', bg: 'rgba(236,72,153,0.18)' },
+  { id: 'stk_2', icon: '🐶🎉', label: 'Perrito Fiesta', bg: 'rgba(16,185,129,0.18)' },
+  { id: 'stk_3', icon: '😎🔥', label: 'Modo Épico', bg: 'rgba(245,158,11,0.18)' },
+  { id: 'stk_4', icon: '🤣💀', label: 'Muerto de Risa', bg: 'rgba(59,130,246,0.18)' },
+  { id: 'stk_5', icon: '🙏✨', label: 'Bendiciones', bg: 'rgba(139,92,246,0.18)' },
+  { id: 'stk_6', icon: '🚀🌕', label: 'A la Luna', bg: 'rgba(14,165,233,0.18)' },
+  { id: 'stk_7', icon: '👑🦁', label: 'Rey Total', bg: 'rgba(234,179,8,0.18)' },
+  { id: 'stk_8', icon: '❤️‍🔥🫂', label: 'Abrazo Fuerte', bg: 'rgba(239,68,68,0.18)' },
+  { id: 'stk_9', icon: '☕😌', label: 'Cafecito Relax', bg: 'rgba(168,85,247,0.18)' },
+  { id: 'stk_10', icon: '🫡🛡️', label: 'A la Orden', bg: 'rgba(20,184,166,0.18)' },
+  { id: 'stk_11', icon: '🥳🎂', label: 'Celebración', bg: 'rgba(244,63,94,0.18)' },
+  { id: 'stk_12', icon: '💯🏆', label: 'Campeón 100%', bg: 'rgba(34,197,94,0.18)' },
+];
 
 export default function ChatDetalleScreen({
   chat,
@@ -18,7 +38,8 @@ export default function ChatDetalleScreen({
 }) {
   const { colors } = useTheme();
   const [text, setText] = useState('');
-  const [showEmojis, setShowEmojis] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerTab, setPickerTab] = useState('emojis'); // 'emojis' | 'stickers'
   const [ephemeralMode, setEphemeralMode] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
@@ -42,11 +63,21 @@ export default function ChatDetalleScreen({
     onSendMessage({
       text: text.trim(),
       mediaUri: null,
-      mediaType: null,
+      mediaType: 'text',
       ephemeral: ephemeralMode,
     });
     setText('');
-    setShowEmojis(false);
+    setShowPicker(false);
+  };
+
+  const handleSendSticker = (stk) => {
+    onSendMessage({
+      text: `${stk.icon} ${stk.label}`,
+      mediaUri: stk.icon,
+      mediaType: 'sticker',
+      ephemeral: ephemeralMode,
+    });
+    setShowPicker(false);
   };
 
   const handlePickImage = async () => {
@@ -93,6 +124,8 @@ export default function ChatDetalleScreen({
   };
 
   const fingerprint = generarHuellaSeguridad(userProfile.phone, chat.peerPhone || chat.id);
+  const esAvatarImagen =
+    chat.avatar && (chat.avatar.startsWith('http') || chat.avatar.startsWith('data:image'));
 
   return (
     <KeyboardAvoidingView
@@ -106,7 +139,7 @@ export default function ChatDetalleScreen({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.headerProfile} onPress={() => setInfoModal(true)}>
-          {chat.avatar && chat.avatar.startsWith('data:image') ? (
+          {esAvatarImagen ? (
             <Image source={{ uri: chat.avatar }} style={styles.avatarImg} />
           ) : (
             <View style={[styles.avatarCircle, { backgroundColor: chat.official ? '#10B981' : '#0284C7' }]}>
@@ -157,8 +190,8 @@ export default function ChatDetalleScreen({
         style={[styles.e2eeBanner, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
         <Text style={[styles.e2eeText, { color: colors.textMuted }]}>
-          🔒 Los mensajes y llamadas están cifrados de extremo a extremo (SHA-256). Toca para verificar huella.
-          {ephemeralMode ? ' • ⏱️ Mensajes temporales (15s) ACTIVOS' : ''}
+          🔒 Los mensajes, stickers y llamadas están cifrados de extremo a extremo (SHA-256).
+          {ephemeralMode ? ' • ⏱️ Temp (15s) ACTIVO' : ''}
         </Text>
       </TouchableOpacity>
 
@@ -171,6 +204,35 @@ export default function ChatDetalleScreen({
       >
         {(chat.messages || []).map((msg) => {
           const isMe = msg.sender === 'me' || msg.senderPhone === userProfile.phone;
+          const isSticker =
+            msg.mediaType === 'sticker' ||
+            (msg.text && LISTA_STICKERS.some((s) => msg.text === `${s.icon} ${s.label}`));
+
+          if (isSticker) {
+            const stickerEmoji = msg.mediaUri || (msg.text || '').split(' ')[0] || '😎🔥';
+            const stickerTitle = (msg.text || '').replace(stickerEmoji, '').trim();
+            return (
+              <View
+                key={msg.id}
+                style={[
+                  styles.stickerBubble,
+                  isMe ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
+                ]}
+              >
+                <View style={[styles.stickerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={styles.stickerBigEmoji}>{stickerEmoji}</Text>
+                  {stickerTitle ? (
+                    <Text style={[styles.stickerLabel, { color: colors.primary }]}>{stickerTitle}</Text>
+                  ) : null}
+                  <View style={styles.msgFooter}>
+                    <Text style={[styles.msgTime, { color: colors.textMuted }]}>{msg.time}</Text>
+                    {isMe && <Text style={styles.msgChecks}> ✓✓</Text>}
+                  </View>
+                </View>
+              </View>
+            );
+          }
+
           return (
             <View
               key={msg.id}
@@ -212,20 +274,67 @@ export default function ChatDetalleScreen({
         })}
       </ScrollView>
 
-      {/* SELECTOR DE EMOJIS RAPIDOS */}
-      {showEmojis && (
-        <View style={[styles.emojiBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {EMOJIS_RAPIDOS.map((em) => (
-              <TouchableOpacity
-                key={em}
-                onPress={() => setText((prev) => prev + em)}
-                style={styles.emojiBtn}
-              >
-                <Text style={{ fontSize: 24 }}>{em}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+      {/* PANEL DE EMOJIS Y STICKERS ESTILO WHATSAPP */}
+      {showPicker && (
+        <View style={[styles.pickerPanel, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <View style={[styles.pickerTabs, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => setPickerTab('emojis')}
+              style={[
+                styles.pickerTabBtn,
+                pickerTab === 'emojis' && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+              ]}
+            >
+              <Text style={[styles.pickerTabText, { color: pickerTab === 'emojis' ? colors.primary : colors.textMuted }]}>
+                😊 Emojis ({LISTA_EMOJIS.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setPickerTab('stickers')}
+              style={[
+                styles.pickerTabBtn,
+                pickerTab === 'stickers' && { borderBottomColor: colors.primary, borderBottomWidth: 2 },
+              ]}
+            >
+              <Text style={[styles.pickerTabText, { color: pickerTab === 'stickers' ? colors.primary : colors.textMuted }]}>
+                🎭 Stickers ({LISTA_STICKERS.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setShowPicker(false)} style={{ paddingHorizontal: 12 }}>
+              <Text style={{ color: colors.textMuted, fontWeight: '900', fontSize: 14 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {pickerTab === 'emojis' ? (
+            <ScrollView style={{ maxHeight: 175 }} contentContainerStyle={styles.emojiGrid}>
+              {LISTA_EMOJIS.map((em) => (
+                <TouchableOpacity
+                  key={em}
+                  onPress={() => setText((prev) => prev + em)}
+                  style={styles.emojiCell}
+                >
+                  <Text style={{ fontSize: 26 }}>{em}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <ScrollView style={{ maxHeight: 185 }} contentContainerStyle={styles.stickerGrid}>
+              {LISTA_STICKERS.map((stk) => (
+                <TouchableOpacity
+                  key={stk.id}
+                  onPress={() => handleSendSticker(stk)}
+                  style={[styles.stickerItem, { backgroundColor: stk.bg, borderColor: colors.border }]}
+                >
+                  <Text style={{ fontSize: 32 }}>{stk.icon}</Text>
+                  <Text style={[styles.stickerItemLabel, { color: colors.text }]} numberOfLines={1}>
+                    {stk.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
       )}
 
@@ -238,8 +347,24 @@ export default function ChatDetalleScreen({
         </View>
       ) : (
         <View style={[styles.inputBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-          <TouchableOpacity onPress={() => setShowEmojis(!showEmojis)} style={styles.iconBtn}>
+          <TouchableOpacity
+            onPress={() => {
+              setPickerTab('emojis');
+              setShowPicker(!showPicker);
+            }}
+            style={styles.iconBtn}
+          >
             <Text style={{ fontSize: 22 }}>😊</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              setPickerTab('stickers');
+              setShowPicker(true);
+            }}
+            style={styles.iconBtn}
+          >
+            <Text style={{ fontSize: 21 }}>🎭</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={handlePickImage} style={styles.iconBtn}>
@@ -248,7 +373,7 @@ export default function ChatDetalleScreen({
 
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-            placeholder={recordingAudio ? `🔴 Grabando nota de voz (${recordSeconds}s)...` : 'Mensaje cifrado...'}
+            placeholder={recordingAudio ? `🔴 Grabando (${recordSeconds}s)...` : 'Mensaje o sticker...'}
             placeholderTextColor={recordingAudio ? '#EF4444' : colors.textMuted}
             value={text}
             onChangeText={setText}
@@ -350,6 +475,18 @@ const styles = StyleSheet.create({
   },
   msgOut: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   msgIn: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  stickerBubble: {
+    marginBottom: 10,
+  },
+  stickerCard: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  stickerBigEmoji: { fontSize: 54, marginBottom: 4 },
+  stickerLabel: { fontSize: 12, fontWeight: '900', marginBottom: 2 },
   senderLabel: { fontSize: 11, fontWeight: '800', marginBottom: 3 },
   msgImage: { width: 220, height: 165, borderRadius: 10, marginBottom: 6 },
   audioRow: {
@@ -374,12 +511,51 @@ const styles = StyleSheet.create({
   },
   msgTime: { fontSize: 10 },
   msgChecks: { fontSize: 11, color: '#38BDF8', fontWeight: '900' },
-  emojiBar: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+  pickerPanel: {
     borderTopWidth: 1,
+    paddingBottom: 6,
   },
-  emojiBtn: { paddingHorizontal: 10, paddingVertical: 4 },
+  pickerTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+  },
+  pickerTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  pickerTabText: { fontSize: 13, fontWeight: '800' },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    padding: 8,
+    gap: 6,
+  },
+  emojiCell: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  stickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    padding: 10,
+    gap: 8,
+  },
+  stickerItem: {
+    width: '31%',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  },
+  stickerItemLabel: { fontSize: 11, fontWeight: '800', marginTop: 4 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -387,9 +563,9 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: Platform.OS === 'android' ? 14 : 8,
     borderTopWidth: 1,
-    gap: 6,
+    gap: 4,
   },
-  iconBtn: { padding: 6 },
+  iconBtn: { padding: 5 },
   input: {
     flex: 1,
     borderWidth: 1,
@@ -405,6 +581,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sendBtnText: { color: '#FFF' },
   sendIcon: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
   officialFooter: {
     paddingVertical: 14,

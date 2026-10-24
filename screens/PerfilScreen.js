@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
+import { generarHuellaSeguridad } from '../lib/seguridad';
 
 const AVATARES = ['😎', '🦁', '🚀', '⚡', '👑', '🌸', '🔥', '💎'];
 
@@ -12,12 +13,19 @@ export default function PerfilScreen({
   onUpdateProfile,
   onCheckUpdates,
   onLogout,
+  onLockNow,
+  onPanicWipe,
 }) {
   const { colors, isDark, toggleTheme } = useTheme();
+  const [subMenu, setSubMenu] = useState(null); // null | 'editar' | 'blindaje'
   const [name, setName] = useState(userProfile.name || '');
   const [bio, setBio] = useState(userProfile.bio || '');
   const [avatar, setAvatar] = useState(userProfile.avatar || '😎');
   const [saving, setSaving] = useState(false);
+
+  const myFingerprint = generarHuellaSeguridad(userProfile.phone, 'NEXCHAT_GLOBAL_KEY');
+  const esAvatarImg =
+    avatar && (avatar.startsWith('http') || avatar.startsWith('data:image'));
 
   const pickGalleryAvatar = async () => {
     try {
@@ -35,7 +43,14 @@ export default function PerfilScreen({
       });
       if (!res.canceled && res.assets?.[0]) {
         const asset = res.assets[0];
-        setAvatar(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri);
+        const nuevo = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        setAvatar(nuevo);
+        await onUpdateProfile({
+          ...userProfile,
+          name: name.trim() || userProfile.name,
+          bio: bio.trim() || userProfile.bio,
+          avatar: nuevo,
+        });
       }
     } catch (e) {
       Alert.alert('Error', 'No se pudo cargar la imagen.');
@@ -55,99 +70,290 @@ export default function PerfilScreen({
       avatar,
     });
     setSaving(false);
-    Alert.alert('✅ Perfil Sincronizado', 'Tus cambios se guardaron en la nube global 24/7.');
+    setSubMenu(null);
+    Alert.alert('✅ Perfil Actualizado', 'Tus cambios y foto de perfil se guardaron en la nube 24/7.');
   };
 
+  const confirmPanic = () => {
+    Alert.alert(
+      '🚨 Destrucción de Emergencia (Anti-Robo)',
+      '¿Estás seguro? Se borrarán todas las llaves locales, sesiones recordadas y caché del teléfono de forma inmediata.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Destruir Datos Locales', style: 'destructive', onPress: onPanicWipe },
+      ]
+    );
+  };
+
+  // SUB-MENÚ 1: EDITAR PERFIL Y FOTO (ESTILO WHATSAPP)
+  if (subMenu === 'editar') {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
+          <TouchableOpacity onPress={() => setSubMenu(null)} style={styles.backMenuBtn}>
+            <Text style={[styles.backMenuText, { color: colors.primary }]}>← Volver a Ajustes de Perfil</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'center' }]}>
+            <TouchableOpacity onPress={pickGalleryAvatar} style={[styles.avatarWrapBig, { borderColor: colors.primary }]}>
+              {esAvatarImg ? (
+                <Image source={{ uri: avatar }} style={styles.avatarImgBig} />
+              ) : (
+                <Text style={{ fontSize: 46 }}>{avatar}</Text>
+              )}
+              <View style={[styles.camBadge, { backgroundColor: colors.primary }]}>
+                <Text style={{ fontSize: 14 }}>📷</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={pickGalleryAvatar}>
+              <Text style={[styles.changePhotoText, { color: colors.primary }]}>
+                📷 Elegir nueva foto desde mi Galería
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.emojiGrid}>
+              {AVATARES.map((em) => (
+                <TouchableOpacity
+                  key={em}
+                  onPress={() => setAvatar(em)}
+                  style={[
+                    styles.emojiOption,
+                    avatar === em && {
+                      borderColor: colors.primary,
+                      borderWidth: 2,
+                      backgroundColor: 'rgba(16,185,129,0.12)',
+                    },
+                  ]}
+                >
+                  <Text style={{ fontSize: 22 }}>{em}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.label, { color: colors.textMuted }]}>TU NOMBRE VISIBLE</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              value={name}
+              onChangeText={setName}
+              placeholder="Tu nombre"
+              placeholderTextColor={colors.textMuted}
+            />
+
+            <Text style={[styles.label, { color: colors.textMuted, marginTop: 14 }]}>INFO / ESTADO DE PERFIL</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+              value={bio}
+              onChangeText={setBio}
+              placeholder="Disponible en NexChat 🔒"
+              placeholderTextColor={colors.textMuted}
+            />
+
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={saving}
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={styles.saveBtnText}>
+                {saving ? 'Guardando en Supabase...' : '💾 Guardar Cambios'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // SUB-MENÚ 2: BLINDAJE Y SEGURIDAD CRIPTOGRÁFICA (INTEGRADO EN PERFIL)
+  if (subMenu === 'blindaje') {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
+          <TouchableOpacity onPress={() => setSubMenu(null)} style={styles.backMenuBtn}>
+            <Text style={[styles.backMenuText, { color: colors.primary }]}>← Volver a Ajustes de Perfil</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.heroCard, { backgroundColor: colors.headerBg }]}>
+            <Text style={{ fontSize: 40, marginBottom: 6 }}>🛡️🔒</Text>
+            <Text style={styles.heroTitle}>Blindaje y Privacidad E2EE</Text>
+            <Text style={styles.heroSub}>
+              Protección militar activa con SHA-256 + PIN 2FA + Escudo Anti-Fuerza Bruta
+            </Text>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>🔑 Tu Huella Criptográfica (40 dígitos)</Text>
+            <Text style={[styles.cardDesc, { color: colors.textMuted }]}>
+              Código único que verifica tu identidad en la red global de NexChat:
+            </Text>
+            <View style={[styles.fpBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+              <Text style={[styles.fpText, { color: colors.primary }]}>{myFingerprint}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>🛡️ Capas de Seguridad en tu Cuenta</Text>
+            <View style={styles.layerRow}>
+              <Text style={{ fontSize: 16 }}>✅</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.layerTitle, { color: colors.text }]}>PIN Hash SHA-256 Irreversible</Text>
+                <Text style={[styles.layerSub, { color: colors.textMuted }]}>
+                  Tu PIN jamás viaja en texto plano.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.layerRow}>
+              <Text style={{ fontSize: 16 }}>✅</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.layerTitle, { color: colors.text }]}>Bloqueo Anti-Fuerza Bruta</Text>
+                <Text style={[styles.layerSub, { color: colors.textMuted }]}>
+                  Congela el acceso si alguien falla tu PIN 3 veces seguidas.
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            onPress={onLockNow}
+            style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 4 }]}
+          >
+            <Text style={styles.saveBtnText}>🔒 Bloquear Pantalla con mi PIN Ahora</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={confirmPanic}
+            style={[styles.saveBtn, { backgroundColor: colors.danger, marginTop: 10 }]}
+          >
+            <Text style={[styles.saveBtnText, { color: '#FFF' }]}>
+              🚨 Botón de Pánico (Destruir Sesión Local)
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // MENÚ PRINCIPAL DE PERFIL Y AJUSTES (ESTILO WHATSAPP)
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
-        {/* TARJETA DE PERFIL */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'center' }]}>
-          <TouchableOpacity onPress={pickGalleryAvatar} style={[styles.avatarWrap, { borderColor: colors.primary }]}>
-            {avatar && avatar.startsWith('data:image') ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImg} />
+        <Text style={[styles.pageTitle, { color: colors.text }]}>Ajustes y Perfil</Text>
+
+        {/* CABECERA CON FOTO DE PERFIL ESTILO WHATSAPP */}
+        <TouchableOpacity
+          onPress={() => setSubMenu('editar')}
+          style={[styles.profileHeaderCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <TouchableOpacity onPress={pickGalleryAvatar} style={[styles.headerAvatarWrap, { borderColor: colors.primary }]}>
+            {esAvatarImg ? (
+              <Image source={{ uri: avatar }} style={styles.headerAvatarImg} />
             ) : (
-              <Text style={{ fontSize: 44 }}>{avatar}</Text>
+              <Text style={{ fontSize: 32 }}>{avatar}</Text>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={pickGalleryAvatar}>
-            <Text style={[styles.changePhotoText, { color: colors.primary }]}>📷 Subir foto desde mi Galería</Text>
+            <View style={[styles.camBadgeSmall, { backgroundColor: colors.primary }]}>
+              <Text style={{ fontSize: 10 }}>📷</Text>
+            </View>
           </TouchableOpacity>
 
-          <View style={styles.emojiGrid}>
-            {AVATARES.map((em) => (
-              <TouchableOpacity
-                key={em}
-                onPress={() => setAvatar(em)}
-                style={[
-                  styles.emojiOption,
-                  avatar === em && { borderColor: colors.primary, borderWidth: 2, backgroundColor: 'rgba(16,185,129,0.12)' },
-                ]}
-              >
-                <Text style={{ fontSize: 22 }}>{em}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>
+              {userProfile.name}
+            </Text>
+            <Text style={[styles.profileBio, { color: colors.textMuted }]} numberOfLines={1}>
+              {userProfile.bio || '🔒 Protegido con cifrado E2EE'}
+            </Text>
+            <Text style={[styles.profilePhone, { color: colors.primary }]}>
+              📱 {userProfile.phone}
+            </Text>
           </View>
 
-          <View style={styles.phoneBadge}>
-            <Text style={styles.phoneBadgeText}>📱 Línea Verificada: {userProfile.phone}</Text>
+          <View style={[styles.editPill, { backgroundColor: colors.inputBg }]}>
+            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>Editar ›</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
-        {/* DATOS EDITABLES */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.textMuted }]}>TU NOMBRE VISIBLE</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-            value={name}
-            onChangeText={setName}
-            placeholder="Tu nombre"
-            placeholderTextColor={colors.textMuted}
-          />
-
-          <Text style={[styles.label, { color: colors.textMuted, marginTop: 14 }]}>INFO / ESTADO DE PERFIL</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-            value={bio}
-            onChangeText={setBio}
-            placeholder="Disponible en NexChat 🔒"
-            placeholderTextColor={colors.textMuted}
-          />
-
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={saving}
-            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-          >
-            <Text style={styles.saveBtnText}>
-              {saving ? 'Guardando en Supabase...' : '💾 Guardar Cambios de Perfil'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* AJUSTES Y OTA */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <TouchableOpacity onPress={toggleTheme} style={styles.settingRow}>
-            <Text style={[styles.settingTitle, { color: colors.text }]}>
-              {isDark ? '🌙 Modo Oscuro Activo' : '☀️ Modo Claro Activo'}
-            </Text>
-            <Text style={{ color: colors.primary, fontWeight: '800' }}>Cambiar</Text>
+        {/* LISTA DE MENÚS ESTILO WHATSAPP */}
+        <View style={[styles.menuCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TouchableOpacity onPress={() => setSubMenu('editar')} style={styles.menuRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
+              <Text style={{ fontSize: 20 }}>👤</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Cuenta y Foto de Perfil</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Cambiar foto de galería, nombre visible e info
+              </Text>
+            </View>
+            <Text style={[styles.chevron, { color: colors.textMuted }]}>›</Text>
           </TouchableOpacity>
 
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-          <TouchableOpacity onPress={onCheckUpdates} style={styles.settingRow}>
-            <Text style={[styles.settingTitle, { color: colors.text }]}>
-              🔄 Buscar Actualización OTA en la Nube
-            </Text>
-            <Text style={{ color: colors.primary, fontWeight: '800' }}>Verificar</Text>
+          <TouchableOpacity onPress={() => setSubMenu('blindaje')} style={styles.menuRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(14,165,233,0.15)' }]}>
+              <Text style={{ fontSize: 20 }}>🛡️</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Blindaje y Privacidad E2EE</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Huella SHA-256, bloqueo con PIN y botón anti-robo
+              </Text>
+            </View>
+            <Text style={[styles.chevron, { color: colors.textMuted }]}>›</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity onPress={onLockNow} style={styles.menuRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+              <Text style={{ fontSize: 20 }}>🔒</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Bloquear Pantalla Ahora</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Proteger tus chats inmediatamente con tu PIN 2FA
+              </Text>
+            </View>
+            <Text style={[styles.chevron, { color: colors.textMuted }]}>›</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity onPress={toggleTheme} style={styles.menuRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(168,85,247,0.15)' }]}>
+              <Text style={{ fontSize: 20 }}>{isDark ? '🌙' : '☀️'}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Apariencia y Tema</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                {isDark ? 'Modo Oscuro activo (toca para cambiar)' : 'Modo Claro activo (toca para cambiar)'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Cambiar</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity onPress={onCheckUpdates} style={styles.menuRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+              <Text style={{ fontSize: 20 }}>🔄</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Actualizaciones en la Nube (OTA)</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                Descargar mejoras sin reinstalar el APK
+              </Text>
+            </View>
+            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Verificar</Text>
           </TouchableOpacity>
         </View>
 
         {/* CERRAR SESIÓN */}
         <TouchableOpacity
           onPress={onLogout}
-          style={[styles.logoutBtn, { borderColor: colors.danger }]}
+          style={[styles.logoutBtn, { backgroundColor: colors.card, borderColor: colors.danger }]}
         >
           <Text style={[styles.logoutText, { color: colors.danger }]}>🚪 Cerrar Sesión en este Celular</Text>
         </TouchableOpacity>
@@ -158,23 +364,99 @@ export default function PerfilScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  pageTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
+  profileHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 14,
+    marginBottom: 16,
+  },
+  headerAvatarWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  headerAvatarImg: { width: 62, height: 62, borderRadius: 31 },
+  camBadgeSmall: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#111b21',
+  },
+  profileName: { fontSize: 18, fontWeight: '900' },
+  profileBio: { fontSize: 12, marginTop: 2 },
+  profilePhone: { fontSize: 12, fontWeight: '800', marginTop: 4 },
+  editPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  menuCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginBottom: 16,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  menuIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuTitle: { fontSize: 15, fontWeight: '800' },
+  menuSub: { fontSize: 12, marginTop: 2 },
+  chevron: { fontSize: 22, fontWeight: '700' },
+  divider: { height: 1 },
+  backMenuBtn: { marginBottom: 12, paddingVertical: 4 },
+  backMenuText: { fontSize: 15, fontWeight: '900' },
   card: {
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     marginBottom: 14,
   },
-  avatarWrap: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+  avatarWrapBig: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 10,
+    position: 'relative',
   },
-  avatarImg: { width: 92, height: 92, borderRadius: 46 },
+  avatarImgBig: { width: 90, height: 90, borderRadius: 45 },
+  camBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   changePhotoText: { fontSize: 13, fontWeight: '800', marginBottom: 4 },
   emojiGrid: {
     flexDirection: 'row',
@@ -190,14 +472,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  phoneBadge: {
-    marginTop: 6,
-    backgroundColor: 'rgba(16,185,129,0.15)',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  phoneBadgeText: { color: '#10B981', fontSize: 12, fontWeight: '800' },
   label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.6 },
   input: {
     borderWidth: 1,
@@ -212,21 +486,38 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
-  saveBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  saveBtnText: { color: '#052E16', fontSize: 15, fontWeight: '900' },
+  heroCard: {
+    borderRadius: 18,
+    padding: 20,
     alignItems: 'center',
-    paddingVertical: 10,
+    marginBottom: 14,
   },
-  settingTitle: { fontSize: 14, fontWeight: '700' },
-  divider: { height: 1, marginVertical: 6 },
+  heroTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  heroSub: { color: '#A7F3D0', fontSize: 12, textAlign: 'center', marginTop: 4 },
+  cardTitle: { fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  cardDesc: { fontSize: 12, lineHeight: 17, marginBottom: 10 },
+  fpBox: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  fpText: { fontSize: 15, fontWeight: '900', letterSpacing: 2, textAlign: 'center', lineHeight: 24 },
+  layerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 10,
+  },
+  layerTitle: { fontSize: 13, fontWeight: '800' },
+  layerSub: { fontSize: 11, marginTop: 2 },
   logoutBtn: {
     borderWidth: 1.5,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   logoutText: { fontSize: 15, fontWeight: '900' },
 });

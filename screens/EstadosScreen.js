@@ -1,138 +1,290 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
+  TextInput, Alert, Image, Platform, StatusBar
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
 
 const COLORES_FONDO = ['#065F46', '#1E3A8A', '#7C2D12', '#581C87', '#831843', '#0F172A'];
+const EMOJIS_ESTADO = ['😀', '😂', '😍', '🔥', '❤️', '🙏', '🎉', '🚀', '👑', '💯', '🐱💖', '😎🔥'];
 
-export default function EstadosScreen({ statuses, userProfile, onPublishStatus }) {
+export default function EstadosScreen({ statuses = [], userProfile, onPublishStatus }) {
   const { colors } = useTheme();
   const [modalNew, setModalNew] = useState(false);
   const [statusText, setStatusText] = useState('');
+  const [statusImage, setStatusImage] = useState(null);
   const [bgIndex, setBgIndex] = useState(0);
   const [viewingStatus, setViewingStatus] = useState(null);
 
+  const esMiAvatarImagen =
+    userProfile?.avatar &&
+    (userProfile.avatar.startsWith('http') || userProfile.avatar.startsWith('data:image'));
+
+  const handlePickStatusPhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Activa el acceso a tus fotos para subir un estado con imagen.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.5,
+        base64: true,
+      });
+      if (!res.canceled && res.assets?.[0]) {
+        const asset = res.assets[0];
+        const uri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        setStatusImage(uri);
+        setModalNew(true);
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo seleccionar la imagen.');
+    }
+  };
+
   const handlePublish = () => {
-    if (!statusText.trim()) {
-      Alert.alert('Estado vacío', 'Escribe algo para compartir en tu estado de 24 horas.');
+    if (!statusText.trim() && !statusImage) {
+      Alert.alert('Estado vacío', 'Escribe algo o adjunta una foto para tu estado de 24 horas.');
       return;
     }
-    onPublishStatus(statusText.trim(), COLORES_FONDO[bgIndex]);
+    const payloadContent = statusImage
+      ? `IMG::${statusImage}||${statusText.trim()}`
+      : statusText.trim();
+
+    onPublishStatus(payloadContent, COLORES_FONDO[bgIndex]);
     setStatusText('');
+    setStatusImage(null);
     setModalNew(false);
+  };
+
+  const parseStatusContent = (raw = '') => {
+    if (String(raw).startsWith('IMG::')) {
+      const parts = String(raw).replace('IMG::', '').split('||');
+      return { imageUri: parts[0], caption: parts[1] || '' };
+    }
+    return { imageUri: null, caption: String(raw) };
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-        {/* MI ESTADO */}
-        <TouchableOpacity
-          onPress={() => setModalNew(true)}
-          style={[styles.myStatusCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <View style={[styles.avatarRing, { borderColor: colors.primary }]}>
-            <Text style={{ fontSize: 26 }}>{userProfile.avatar?.startsWith('data:') ? '📸' : (userProfile.avatar || '😎')}</Text>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
+        <Text style={[styles.pageTitle, { color: colors.text }]}>Novedades y Estados</Text>
+
+        {/* TARJETA MI ESTADO ESTILO WHATSAPP */}
+        <View style={[styles.myStatusCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TouchableOpacity
+            onPress={() => {
+              setStatusImage(null);
+              setModalNew(true);
+            }}
+            style={styles.myStatusLeft}
+          >
+            <View style={[styles.avatarRing, { borderColor: colors.primary }]}>
+              {esMiAvatarImagen ? (
+                <Image source={{ uri: userProfile.avatar }} style={styles.avatarImg} />
+              ) : (
+                <Text style={{ fontSize: 26 }}>{userProfile?.avatar || '😎'}</Text>
+              )}
+              <View style={[styles.plusCorner, { backgroundColor: colors.primary }]}>
+                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>+</Text>
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, { color: colors.text }]}>Mi estado</Text>
+              <Text style={[styles.sub, { color: colors.textMuted }]}>
+                Toca para añadir texto, emojis o foto (24h)
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.quickActionBtns}>
+            <TouchableOpacity
+              onPress={handlePickStatusPhoto}
+              style={[styles.circleActionBtn, { backgroundColor: colors.inputBg }]}
+            >
+              <Text style={{ fontSize: 18 }}>📷</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setStatusImage(null);
+                setModalNew(true);
+              }}
+              style={[styles.circleActionBtn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={{ fontSize: 17 }}>✏️</Text>
+            </TouchableOpacity>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.text }]}>Mi Estado (24h)</Text>
-            <Text style={[styles.sub, { color: colors.textMuted }]}>Toca para publicar una actualización de estado</Text>
-          </View>
-          <View style={[styles.plusBadge, { backgroundColor: colors.primary }]}>
-            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 18 }}>+</Text>
-          </View>
-        </TouchableOpacity>
+        </View>
 
         <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>
-          ESTADOS RECIENTES DE LA COMUNIDAD GLOBAL
+          RECIENTES (24 HORAS)
         </Text>
 
         {statuses.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={{ fontSize: 32, marginBottom: 8 }}>⭕</Text>
+            <Text style={{ fontSize: 34, marginBottom: 8 }}>⭕</Text>
             <Text style={[styles.title, { color: colors.text, textAlign: 'center' }]}>
-              Aún no hay estados publicados hoy
+              Aún no hay estados recientes
             </Text>
             <Text style={[styles.sub, { color: colors.textMuted, textAlign: 'center', marginTop: 4 }]}>
-              Sé el primero en publicar un estado cifrado de 24 horas.
+              Toca 📷 o ✏️ arriba para compartir una foto, frase o sticker con tus amigos.
             </Text>
           </View>
         ) : (
-          statuses.map((st) => (
-            <TouchableOpacity
-              key={st.id}
-              onPress={() => setViewingStatus(st)}
-              style={[styles.statusItem, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              <View style={[styles.statusPreviewCircle, { backgroundColor: st.bg_color || '#065F46' }]}>
-                <Text style={styles.statusPreviewText} numberOfLines={1}>{st.content}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.title, { color: colors.text }]}>
-                  {st.user_name} {st.user_phone === userProfile.phone ? '(Tú)' : ''}
-                </Text>
-                <Text style={[styles.sub, { color: colors.textMuted }]} numberOfLines={1}>
-                  {st.content}
-                </Text>
-              </View>
-              <Text style={[styles.timeTag, { color: colors.primary }]}>24h</Text>
-            </TouchableOpacity>
-          ))
+          statuses.map((st) => {
+            const { imageUri, caption } = parseStatusContent(st.content);
+            const authorAvatar = st.user_avatar || st.avatar;
+            const esAutorImg =
+              authorAvatar &&
+              (authorAvatar.startsWith('http') || authorAvatar.startsWith('data:image'));
+
+            return (
+              <TouchableOpacity
+                key={st.id}
+                onPress={() => setViewingStatus(st)}
+                style={[styles.statusItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={[styles.statusRing, { borderColor: colors.primary }]}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.statusThumbImg} />
+                  ) : esAutorImg ? (
+                    <Image source={{ uri: authorAvatar }} style={styles.statusThumbImg} />
+                  ) : (
+                    <View
+                      style={[
+                        styles.statusPreviewCircle,
+                        { backgroundColor: st.bg_color || '#065F46' },
+                      ]}
+                    >
+                      <Text style={styles.statusPreviewText} numberOfLines={2}>
+                        {caption}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.title, { color: colors.text }]}>
+                    {st.user_name} {st.user_phone === userProfile.phone ? '(Tú)' : ''}
+                  </Text>
+                  <Text style={[styles.sub, { color: colors.textMuted }]} numberOfLines={1}>
+                    {imageUri ? `📷 Foto ${caption ? '• ' + caption : ''}` : caption}
+                  </Text>
+                </View>
+
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.timeTag, { color: colors.primary }]}>{st.time || 'Hoy'}</Text>
+                  <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 2 }}>🔒 E2EE</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
 
-      {/* MODAL CREAR ESTADO */}
+      {/* MODAL CREAR ESTADO (TEXTO, EMOJIS O FOTO) */}
       <Modal visible={modalNew} animationType="slide" transparent onRequestClose={() => setModalNew(false)}>
         <View style={[styles.fullModal, { backgroundColor: COLORES_FONDO[bgIndex] }]}>
           <View style={styles.modalTopBar}>
-            <TouchableOpacity onPress={() => setModalNew(false)}>
+            <TouchableOpacity onPress={() => setModalNew(false)} style={styles.topPillBtn}>
               <Text style={styles.topBtn}>✕ Cerrar</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setBgIndex((bgIndex + 1) % COLORES_FONDO.length)}
-              style={styles.paletteBtn}
-            >
-              <Text style={styles.topBtn}>🎨 Cambiar Fondo</Text>
-            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity onPress={handlePickStatusPhoto} style={styles.topPillBtn}>
+                <Text style={styles.topBtn}>📷 Foto</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setBgIndex((bgIndex + 1) % COLORES_FONDO.length)}
+                style={styles.topPillBtn}
+              >
+                <Text style={styles.topBtn}>🎨 Fondo</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.centerInputWrap}>
+            {statusImage && (
+              <Image source={{ uri: statusImage }} style={styles.statusHeroPhoto} resizeMode="cover" />
+            )}
             <TextInput
-              style={styles.bigInput}
-              placeholder="Escribe un estado..."
-              placeholderTextColor="rgba(255,255,255,0.6)"
+              style={[styles.bigInput, statusImage && { fontSize: 18, marginTop: 14 }]}
+              placeholder={statusImage ? 'Añade un comentario o emoji a tu foto...' : 'Escribe un estado o toca un emoji...'}
+              placeholderTextColor="rgba(255,255,255,0.65)"
               value={statusText}
               onChangeText={setStatusText}
               multiline
               maxLength={220}
-              autoFocus
             />
           </View>
 
-          <TouchableOpacity onPress={handlePublish} style={styles.publishBtn}>
-            <Text style={styles.publishBtnText}>🚀 Publicar Estado (24h)</Text>
-          </TouchableOpacity>
+          {/* BARRA RÁPIDA DE EMOJIS Y STICKERS PARA EL ESTADO */}
+          <View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.emojiBarRow}
+            >
+              {EMOJIS_ESTADO.map((em) => (
+                <TouchableOpacity
+                  key={em}
+                  onPress={() => setStatusText((prev) => prev + ' ' + em)}
+                  style={styles.emojiChip}
+                >
+                  <Text style={{ fontSize: 22 }}>{em}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity onPress={handlePublish} style={styles.publishBtn}>
+              <Text style={styles.publishBtnText}>🚀 Publicar en Mi Estado (24h)</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
-      {/* MODAL VER ESTADO */}
+      {/* MODAL VER ESTADO EN PANTALLA COMPLETA */}
       <Modal visible={!!viewingStatus} animationType="fade" transparent onRequestClose={() => setViewingStatus(null)}>
-        {viewingStatus && (
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setViewingStatus(null)}
-            style={[styles.fullModal, { backgroundColor: viewingStatus.bg_color || '#065F46' }]}
-          >
-            <View style={styles.viewerHeader}>
-              <Text style={styles.viewerAuthor}>{viewingStatus.avatar || '⭕'} {viewingStatus.user_name}</Text>
-              <Text style={styles.viewerClose}>✕</Text>
-            </View>
-            <View style={styles.centerInputWrap}>
-              <Text style={styles.viewerContent}>{viewingStatus.content}</Text>
-            </View>
-            <Text style={styles.viewerHint}>Toca en cualquier lugar para cerrar</Text>
-          </TouchableOpacity>
-        )}
+        {viewingStatus && (() => {
+          const { imageUri, caption } = parseStatusContent(viewingStatus.content);
+          return (
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => setViewingStatus(null)}
+              style={[styles.fullModal, { backgroundColor: viewingStatus.bg_color || '#065F46' }]}
+            >
+              <View style={styles.progressBarWrap}>
+                <View style={styles.progressBarFill} />
+              </View>
+
+              <View style={styles.viewerHeader}>
+                <View>
+                  <Text style={styles.viewerAuthor}>⭕ {viewingStatus.user_name}</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
+                    {viewingStatus.time || 'Hace un momento'} • 🔒 Cifrado E2EE
+                  </Text>
+                </View>
+                <Text style={styles.viewerClose}>✕</Text>
+              </View>
+
+              <View style={styles.centerInputWrap}>
+                {imageUri && (
+                  <Image source={{ uri: imageUri }} style={styles.viewerPhoto} resizeMode="contain" />
+                )}
+                {caption ? (
+                  <Text style={[styles.viewerContent, imageUri && { fontSize: 20, marginTop: 16 }]}>
+                    {caption}
+                  </Text>
+                ) : null}
+              </View>
+
+              <Text style={styles.viewerHint}>Toca en cualquier lugar para cerrar</Text>
+            </TouchableOpacity>
+          );
+        })()}
       </Modal>
     </View>
   );
@@ -140,32 +292,59 @@ export default function EstadosScreen({ statuses, userProfile, onPublishStatus }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  pageTitle: { fontSize: 20, fontWeight: '900', marginBottom: 12 },
   myStatusCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    gap: 12,
     marginBottom: 20,
+    gap: 10,
+  },
+  myStatusLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   avatarRing: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  avatarImg: { width: 50, height: 50, borderRadius: 25 },
+  plusCorner: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#111b21',
+  },
+  quickActionBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  circleActionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: { fontSize: 15, fontWeight: '800' },
   sub: { fontSize: 12, marginTop: 2 },
-  plusBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   sectionHeader: {
     fontSize: 11,
     fontWeight: '800',
@@ -182,15 +361,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     marginBottom: 10,
     gap: 12,
   },
+  statusRing: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 2.5,
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusThumbImg: { width: 46, height: 46, borderRadius: 23 },
   statusPreviewCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 4,
@@ -199,23 +388,29 @@ const styles = StyleSheet.create({
   timeTag: { fontSize: 11, fontWeight: '800' },
   fullModal: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 22,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 14 : 44,
+    paddingBottom: 24,
     justifyContent: 'space-between',
   },
   modalTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
   },
-  topBtn: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  paletteBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  topBtn: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  topPillBtn: {
+    backgroundColor: 'rgba(0,0,0,0.28)',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  centerInputWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  centerInputWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 12 },
+  statusHeroPhoto: {
+    width: '100%',
+    height: 260,
+    borderRadius: 18,
+  },
   bigInput: {
     color: '#FFFFFF',
     fontSize: 26,
@@ -223,22 +418,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     width: '100%',
   },
+  emojiBarRow: {
+    paddingVertical: 10,
+    gap: 8,
+  },
+  emojiChip: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 6,
+  },
   publishBtn: {
     backgroundColor: '#10B981',
     paddingVertical: 16,
     borderRadius: 16,
     alignItems: 'center',
-    marginBottom: 16,
   },
-  publishBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  publishBtnText: { color: '#052E16', fontSize: 16, fontWeight: '900' },
+  progressBarWrap: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 2,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#10B981',
+  },
   viewerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
   },
-  viewerAuthor: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-  viewerClose: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
+  viewerAuthor: { color: '#FFFFFF', fontSize: 17, fontWeight: '900' },
+  viewerClose: { color: '#FFFFFF', fontSize: 22, fontWeight: '900', padding: 6 },
+  viewerPhoto: {
+    width: '100%',
+    height: 340,
+    borderRadius: 18,
+  },
   viewerContent: { color: '#FFFFFF', fontSize: 28, fontWeight: '900', textAlign: 'center' },
-  viewerHint: { color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontSize: 12, marginBottom: 12 },
+  viewerHint: { color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontSize: 12 },
 });
