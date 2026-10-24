@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
-  TextInput, Alert, Image, Platform, StatusBar
+  TextInput, Alert, Image, Platform, StatusBar, ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import {
   parsearColorYVistasEstado,
@@ -28,6 +29,15 @@ export default function EstadosScreen({
   const [bgIndex, setBgIndex] = useState(0);
   const [viewingStatus, setViewingStatus] = useState(null);
   const [viewersModalStatus, setViewersModalStatus] = useState(null);
+  const [loadingPhotoViewer, setLoadingPhotoViewer] = useState(false);
+
+  // Caché en memoria para que la foto nunca se pierda al actualizar el contador de vistas
+  const contentCacheRef = useRef({});
+  (Array.isArray(statuses) ? statuses : []).forEach((s) => {
+    if (s?.id && s?.content) {
+      contentCacheRef.current[s.id] = s.content;
+    }
+  });
 
   const esMiAvatarImagen =
     userProfile?.avatar &&
@@ -43,7 +53,8 @@ export default function EstadosScreen({
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.5,
+        aspect: [9, 16],
+        quality: 0.25,
         base64: true,
       });
       if (!res.canceled && res.assets?.[0]) {
@@ -77,13 +88,32 @@ export default function EstadosScreen({
       const parts = String(raw).replace('IMG::', '').split('||');
       return { imageUri: parts[0], caption: parts[1] || '' };
     }
-    return { imageUri: null, caption: String(raw) };
+    return { imageUri: null, caption: String(raw || '') };
   };
 
-  const handleOpenStatus = (st) => {
-    setViewingStatus(st);
+  const handleOpenStatus = async (st) => {
+    const cached = st?.content || contentCacheRef.current[st?.id] || '';
+    const initialSt = { ...st, content: cached };
+    setViewingStatus(initialSt);
+
+    if (!cached && st?.id) {
+      setLoadingPhotoViewer(true);
+      try {
+        const { data: fullSt } = await supabase
+          .from('nexchat_statuses')
+          .select('*')
+          .eq('id', st.id)
+          .maybeSingle();
+        if (fullSt?.content) {
+          contentCacheRef.current[st.id] = fullSt.content;
+          setViewingStatus((prev) => (prev?.id === st.id ? { ...prev, ...fullSt } : prev));
+        }
+      } catch {}
+      setLoadingPhotoViewer(false);
+    }
+
     if (onViewStatus && st.user_phone !== userProfile?.phone) {
-      onViewStatus(st);
+      onViewStatus(initialSt);
     }
   };
 
@@ -186,7 +216,9 @@ export default function EstadosScreen({
               MIS ESTADOS ACTIVOS ({misEstados.length})
             </Text>
             {misEstados.map((st) => {
-              const { imageUri, caption } = parseStatusContent(st.content);
+              const { imageUri, caption } = parseStatusContent(
+                st.content || contentCacheRef.current[st.id]
+              );
               const { color: bgColor, views } = parsearColorYVistasEstado(st.bg_color);
               const restante = calcularTiempoRestanteEstado(st);
 
@@ -262,7 +294,9 @@ export default function EstadosScreen({
           </View>
         ) : (
           otrosEstados.map((st) => {
-            const { imageUri, caption } = parseStatusContent(st.content);
+            const { imageUri, caption } = parseStatusContent(
+              st.content || contentCacheRef.current[st.id]
+            );
             const { color: bgColor, views } = parsearColorYVistasEstado(st.bg_color);
             const restante = calcularTiempoRestanteEstado(st);
             const yaLoVi = views.some((v) => v.phone === userProfile?.phone);
@@ -378,13 +412,24 @@ export default function EstadosScreen({
       <Modal visible={!!viewingStatus} animationType="fade" transparent onRequestClose={() => setViewingStatus(null)}>
         {viewingStatus && (() => {
           const liveSt = statuses.find((s) => s.id === viewingStatus.id) || viewingStatus;
-          const { imageUri, caption } = parseStatusContent(liveSt.content);
+          const rawContent =
+            liveSt.content ||
+            viewingStatus.content ||
+            contentCacheRef.current[liveSt.id] ||
+            '';
+          const { imageUri, caption } = parseStatusContent(rawContent);
           const { color: bgColor, views } = parsearColorYVistasEstado(liveSt.bg_color);
           const restante = calcularTiempoRestanteEstado(liveSt);
           const esMio = liveSt.user_phone === userProfile?.phone;
+          const esEstadoConFoto = !!imageUri || loadingPhotoViewer || !rawContent;
 
           return (
-            <View style={[styles.fullModal, { backgroundColor: bgColor }]}>
+            <View
+              style={[
+                styles.fullModal,
+                { backgroundColor: esEstadoConFoto ? '#090D16' : bgColor },
+              ]}
+            >
               <View>
                 <View style={styles.progressBarWrap}>
                   <View style={styles.progressBarFill} />
@@ -422,9 +467,17 @@ export default function EstadosScreen({
                 onPress={() => setViewingStatus(null)}
                 style={styles.centerInputWrap}
               >
-                {imageUri && (
+                {loadingPhotoViewer && !imageUri ? (
+                  <View style={{ alignItems: 'center', gap: 10 }}>
+                    <ActivityIndicator size="large" color="#00A884" />
+                    <Text style={{ color: '#94A3B8', fontSize: 13, fontWeight: '700' }}>
+                      Cargando estado...
+                    </Text>
+                  </View>
+                ) : null}
+                {imageUri ? (
                   <Image source={{ uri: imageUri }} style={styles.viewerPhoto} resizeMode="contain" />
-                )}
+                ) : null}
                 {caption ? (
                   <Text style={[styles.viewerContent, imageUri && { fontSize: 20, marginTop: 16 }]}>
                     {caption}

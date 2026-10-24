@@ -97,7 +97,7 @@ export default function ChatsScreen({
     }
   }, [vistaModal]);
 
-  // Verificación en vivo estilo WhatsApp mientras escribes el número de tu amigo
+  // Verificación instantánea en memoria + nube mientras escribes el número de tu amigo
   useEffect(() => {
     const limpio = telefonoAmigo.replace(/[^0-9]/g, '');
     if (limpio.length < 6) {
@@ -105,6 +105,19 @@ export default function ChatsScreen({
       setVerificacionTerminada(false);
       return;
     }
+
+    // 1. Búsqueda instantánea en memoria (0ms de demora)
+    const enMemoria =
+      usuariosNexChat.find((u) => String(u.phone || '').replace(/[^0-9]/g, '').endsWith(limpio)) ||
+      Object.values(usersPresence || {}).find((u) =>
+        String(u?.phone || '').replace(/[^0-9]/g, '').endsWith(limpio)
+      );
+    if (enMemoria) {
+      setUsuarioEncontradoLive(enMemoria);
+      setVerificacionTerminada(true);
+      return;
+    }
+
     setVerificacionTerminada(false);
     const timer = setTimeout(async () => {
       try {
@@ -121,9 +134,9 @@ export default function ChatsScreen({
       } finally {
         setVerificacionTerminada(true);
       }
-    }, 350);
+    }, 150);
     return () => clearTimeout(timer);
-  }, [telefonoAmigo, paisSeleccionado]);
+  }, [telefonoAmigo, paisSeleccionado, usuariosNexChat, usersPresence]);
 
   async function cargarDirectorioUsuarios() {
     setCargandoUsuarios(true);
@@ -530,6 +543,15 @@ export default function ChatsScreen({
             vistaPrevia = ultimo.text || ultimo.content || vistaPrevia;
           }
 
+          const pDigits = String(item.peerPhone || item.phone || '').replace(/[^0-9]/g, '');
+          const pUser =
+            (pDigits && usersPresence[pDigits]) ||
+            usuariosNexChat.find((u) => String(u.phone || '').replace(/[^0-9]/g, '').endsWith(pDigits));
+          const avatarRow =
+            (item.avatar && (item.avatar.startsWith('http') || item.avatar.startsWith('data:image')) && item.avatar) ||
+            (pUser?.avatar && (pUser.avatar.startsWith('http') || pUser.avatar.startsWith('data:image')) && pUser.avatar) ||
+            item.avatar;
+
           return (
             <TouchableOpacity
               style={[styles.chatRow, { borderColor: colors.border }]}
@@ -542,7 +564,7 @@ export default function ChatsScreen({
               }}
             >
               {renderAvatar(
-                item.avatar,
+                avatarRow,
                 item.official,
                 52,
                 item.name,

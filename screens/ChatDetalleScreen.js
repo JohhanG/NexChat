@@ -62,6 +62,14 @@ export default function ChatDetalleScreen({
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
 
+  // Reproductor de audio / nota de voz
+  const [playingAudioId, setPlayingAudioId] = useState(null);
+  const [audioSeconds, setAudioSeconds] = useState(0);
+
+  // Foto y Bio del amigo obtenidas en tiempo real
+  const [livePeerAvatar, setLivePeerAvatar] = useState(null);
+  const [livePeerBio, setLivePeerBio] = useState(null);
+
   // Modal Ficha de Contacto (Estilo WhatsApp & Telegram)
   const [infoModal, setInfoModal] = useState(false);
   const [editedName, setEditedName] = useState(chat.name || '');
@@ -75,6 +83,75 @@ export default function ChatDetalleScreen({
   useEffect(() => {
     setEditedName(chat.name || '');
   }, [chat.name]);
+
+  // Cargar foto real del contacto desde presencia o Supabase para ver su avatar aunque no esté guardado
+  useEffect(() => {
+    if (chat.isGroup || chat.official) return;
+    const phoneToSearch = chat.peerPhone || chat.phone;
+    const digits = String(phoneToSearch || '').replace(/[^0-9]/g, '');
+    if (!digits) return;
+
+    const fromPres =
+      usersPresence[digits] ||
+      Object.values(usersPresence || {}).find(
+        (u) => String(u?.phone || '').replace(/[^0-9]/g, '') === digits
+      );
+    if (
+      fromPres?.avatar &&
+      (fromPres.avatar.startsWith('http') || fromPres.avatar.startsWith('data:image'))
+    ) {
+      setLivePeerAvatar(fromPres.avatar);
+      if (fromPres.bio) setLivePeerBio(fromPres.bio);
+      return;
+    }
+
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase
+        .from('nexchat_users')
+        .select('avatar,bio,name')
+        .or(`phone.ilike.%${digits}%,id.ilike.%${digits}%`)
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (
+            data?.avatar &&
+            (data.avatar.startsWith('http') || data.avatar.startsWith('data:image'))
+          ) {
+            setLivePeerAvatar(data.avatar);
+          }
+          if (data?.bio) setLivePeerBio(data.bio);
+        })
+        .catch(() => {});
+    });
+  }, [chat.id, chat.peerPhone, chat.phone, usersPresence]);
+
+  // Temporizador para reproducción de nota de voz
+  useEffect(() => {
+    let timer;
+    if (playingAudioId) {
+      timer = setInterval(() => {
+        setAudioSeconds((s) => {
+          if (s >= 15) {
+            setPlayingAudioId(null);
+            return 0;
+          }
+          return s + 1;
+        });
+      }, 1000);
+    } else {
+      setAudioSeconds(0);
+    }
+    return () => clearInterval(timer);
+  }, [playingAudioId]);
+
+  const handleTogglePlayAudio = (msgId) => {
+    if (playingAudioId === msgId) {
+      setPlayingAudioId(null);
+    } else {
+      setPlayingAudioId(msgId);
+      setAudioSeconds(0);
+    }
+  };
 
   // Permitir volver atrás deslizando el borde o con el botón Atrás de Android sin cerrar la app
   useEffect(() => {
@@ -144,7 +221,7 @@ export default function ChatDetalleScreen({
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.5,
+        quality: 0.28,
         base64: true,
       });
       if (!res.canceled && res.assets?.[0]) {
@@ -207,15 +284,19 @@ export default function ChatDetalleScreen({
       name: c.name || c.peerPhone || c.phone,
     }));
 
-  const esAvatarImagen =
-    chat.avatar && (chat.avatar.startsWith('http') || chat.avatar.startsWith('data:image'));
+  const peerDigits = String(chat.peerPhone || chat.phone || '').replace(/[^0-9]/g, '');
+  const peerRecord = (peerDigits && usersPresence[peerDigits]) || null;
+  const avatarEfectivo =
+    livePeerAvatar ||
+    (chat.avatar && (chat.avatar.startsWith('http') || chat.avatar.startsWith('data:image')) && chat.avatar) ||
+    (peerRecord?.avatar && (peerRecord.avatar.startsWith('http') || peerRecord.avatar.startsWith('data:image')) && peerRecord.avatar);
 
   const renderAvatarCircle = (size = 42) => {
-    if (esAvatarImagen) {
+    if (avatarEfectivo) {
       return (
         <Image
-          source={{ uri: chat.avatar }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
+          source={{ uri: avatarEfectivo }}
+          style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#202c33' }}
         />
       );
     }
@@ -342,7 +423,7 @@ export default function ChatDetalleScreen({
       >
         <Ionicons name="lock-closed" size={13} color={colors.primary} />
         <Text style={[styles.e2eeText, { color: colors.textMuted }]}>
-          Mensajes y llamadas cifrados de extremo a extremo. Toca un mensaje para eliminarlo.
+          Mensajes cifrados de extremo a extremo • Deja presionado un mensaje para eliminarlo.
           {ephemeralMode ? ' • ⏱️ 15s Activo' : ''}
         </Text>
       </TouchableOpacity>
@@ -372,9 +453,9 @@ export default function ChatDetalleScreen({
             return (
               <TouchableOpacity
                 key={msg.id}
-                activeOpacity={0.8}
-                onPress={() => setSelectedMessage(msg)}
+                activeOpacity={0.88}
                 onLongPress={() => setSelectedMessage(msg)}
+                delayLongPress={320}
                 style={[
                   styles.stickerBubble,
                   isMe ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
@@ -396,12 +477,20 @@ export default function ChatDetalleScreen({
             );
           }
 
+          const isAudio = !isDeleted && msg.mediaType === 'audio';
+          const isPlayingThis = playingAudioId === msg.id;
+
           return (
             <TouchableOpacity
               key={msg.id}
-              activeOpacity={0.82}
-              onPress={() => setSelectedMessage(msg)}
+              activeOpacity={0.88}
+              onPress={() => {
+                if (isAudio) {
+                  handleTogglePlayAudio(msg.id);
+                }
+              }}
               onLongPress={() => setSelectedMessage(msg)}
+              delayLongPress={320}
               style={[
                 styles.msgBubble,
                 isMe
@@ -419,22 +508,56 @@ export default function ChatDetalleScreen({
                 <Image source={{ uri: msg.mediaUri }} style={styles.msgImage} resizeMode="cover" />
               ) : null}
 
-              {!isDeleted && msg.mediaType === 'audio' ? (
-                <View style={styles.audioRow}>
-                  <Ionicons name="play-circle" size={28} color="#00A884" />
-                  <View style={styles.audioWave} />
+              {isAudio ? (
+                <View style={[styles.audioRow, { alignItems: 'center', paddingVertical: 4 }]}>
+                  <TouchableOpacity
+                    onPress={() => handleTogglePlayAudio(msg.id)}
+                    style={{ padding: 2 }}
+                  >
+                    <Ionicons
+                      name={isPlayingThis ? 'pause-circle' : 'play-circle'}
+                      size={36}
+                      color="#00A884"
+                    />
+                  </TouchableOpacity>
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', height: 16 }}>
+                      {Array.from({ length: 18 }).map((_, i) => (
+                        <View
+                          key={i}
+                          style={{
+                            width: 3,
+                            height: Math.max(5, ((i * 7) % 18) + 5),
+                            borderRadius: 1.5,
+                            backgroundColor:
+                              isPlayingThis && i <= (audioSeconds % 18)
+                                ? '#00A884'
+                                : 'rgba(255,255,255,0.45)',
+                            marginHorizontal: 1.5,
+                          }}
+                        />
+                      ))}
+                    </View>
+                    <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>
+                      {isPlayingThis
+                        ? `Reproduciendo 00:${audioSeconds < 10 ? '0' : ''}${audioSeconds}`
+                        : msg.text || 'Nota de voz • Toca para reproducir'}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
 
-              <Text
-                style={[
-                  styles.msgText,
-                  { color: isMe ? colors.bubbleOutText : colors.bubbleInText },
-                  isDeleted && { fontStyle: 'italic', opacity: 0.72 },
-                ]}
-              >
-                {msg.text}
-              </Text>
+              {!isAudio && (
+                <Text
+                  style={[
+                    styles.msgText,
+                    { color: isMe ? colors.bubbleOutText : colors.bubbleInText },
+                    isDeleted && { fontStyle: 'italic', opacity: 0.72 },
+                  ]}
+                >
+                  {msg.text}
+                </Text>
+              )}
 
               <View style={styles.msgFooter}>
                 {msg.ephemeral && !isDeleted && (
@@ -703,13 +826,18 @@ export default function ChatDetalleScreen({
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Avatar Grande + Nombre + Teléfono + Estado de Conexión */}
               <View style={styles.sheetProfileHero}>
-                {renderAvatarCircle(82)}
+                {renderAvatarCircle(88)}
                 <Text style={[styles.sheetContactName, { color: colors.text }]}>
                   {chat.name}
                 </Text>
                 <Text style={[styles.sheetContactPhone, { color: colors.primary }]}>
                   {chat.peerPhone || (chat.official ? 'Cuenta Oficial Verificada' : 'Grupo Global')}
                 </Text>
+                {livePeerBio ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center', fontStyle: 'italic', paddingHorizontal: 20 }}>
+                    "{livePeerBio}"
+                  </Text>
+                ) : null}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -911,29 +1039,36 @@ export default function ChatDetalleScreen({
                 </View>
               )}
 
-              {/* Sección Editar Nombre del Contacto */}
+              {/* Sección Añadir a Contactos / Editar Nombre */}
               {!chat.official && (
                 <View style={[styles.sheetSection, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <Ionicons name="create-outline" size={16} color={colors.primary} />
+                    <Ionicons name="person-add" size={17} color={colors.primary} />
                     <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 0 }]}>
-                      EDITAR NOMBRE DEL CONTACTO
+                      GUARDAR / AÑADIR A MIS CONTACTOS
                     </Text>
                   </View>
+
+                  <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>
+                    Asigna un nombre personalizado para guardarlo en tu agenda de NexChat:
+                  </Text>
 
                   <View style={styles.editRowInline}>
                     <TextInput
                       style={[styles.editInputInline, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
                       value={editedName}
                       onChangeText={setEditedName}
-                      placeholder="Escribe el nombre..."
+                      placeholder="Nombre del contacto..."
                       placeholderTextColor={colors.textMuted}
                     />
                     <TouchableOpacity
-                      onPress={handleSaveContactName}
+                      onPress={() => {
+                        handleSaveContactName();
+                        Alert.alert('Contacto guardado', `Se guardó "${editedName.trim()}" en tus contactos.`);
+                      }}
                       style={[styles.saveInlineBtn, { backgroundColor: colors.primary }]}
                     >
-                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                      <Ionicons name="save-outline" size={17} color="#FFFFFF" />
                       <Text style={styles.saveInlineBtnText}>Guardar</Text>
                     </TouchableOpacity>
                   </View>

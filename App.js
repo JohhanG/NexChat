@@ -93,7 +93,10 @@ function MainApp() {
   const deletedMsgIdsRef = useRef(new Set());
   const clearedChatsRef = useRef({});
   const readMsgIdsRef = useRef(new Set(['welcome_1', 'welcome_2', 'official_welcome_msg']));
+  const processedMsgIdsRef = useRef(new Set(['welcome_1', 'welcome_2', 'official_welcome_msg']));
   const selectedChatIdRef = useRef(null);
+  const realtimeChannelRef = useRef(null);
+  const lastSyncTimestampRef = useRef(0);
 
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
@@ -265,6 +268,21 @@ function MainApp() {
 
     const myCleanDigits = String(userProfile.phone || '').replace(/[^0-9]/g, '');
 
+    const sincronizarEstadosSeguros = (stRows) => {
+      if (!Array.isArray(stRows)) return;
+      const vigentes = stRows.filter((s) => !calcularTiempoRestanteEstado(s).expirado);
+      setStatuses((prev) => {
+        const prevMap = {};
+        prev.forEach((p) => {
+          if (p?.id && p?.content) prevMap[p.id] = p.content;
+        });
+        return vigentes.map((item) => ({
+          ...item,
+          content: item.content || prevMap[item.id] || '',
+        }));
+      });
+    };
+
     const cargarDatosNube = async () => {
       try {
         // Asegurar que la lista de eliminados y leídos esté cargada antes de sincronizar con la nube
@@ -292,62 +310,98 @@ function MainApp() {
           }
         }
 
-        // Cargar y limpiar estados de más de 24 horas automáticamente
         const ahoraMs = Date.now();
-        try {
-          await supabase.from('nexchat_statuses').delete().lt('expires_at', ahoraMs);
-        } catch {}
 
-        const { data: stData } = await supabase
-          .from('nexchat_statuses')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(40);
-        if (stData) {
-          setStatuses(stData.filter((s) => !calcularTiempoRestanteEstado(s).expirado));
+        // Ejecutar TODAS las consultas iniciales en PARALELO para que los primeros mensajes carguen al instante
+        const [msgResult, stResult, usrResult] = await Promise.all([
+          myCleanDigits.length >= 6
+            ? supabase
+                .from('nexchat_messages')
+                .select('*')
+                .or(`chat_id.ilike.%${myCleanDigits}%,chat_id.eq.official_nexchat,chat_id.ilike.group_%`)
+                .order('timestamp', { ascending: true })
+                .limit(200)
+            : Promise.resolve({ data: [] }),
+          supabase
+            .from('nexchat_statuses')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(35),
+          supabase
+            .from('nexchat_users')
+            .select('id,phone,name,online,last_seen,bio,avatar')
+            .limit(120),
+          supabase
+            .from('nexchat_users')
+            .update({ online: true, last_seen: new Date().toISOString() })
+            .eq('phone', userProfile.phone),
+          supabase.from('nexchat_statuses').delete().lt('expires_at', ahoraMs),
+        ]);
+
+        if (msgResult?.data && msgResult.data.length > 0) {
+          integrarMensajesNube(msgResult.data);
         }
 
-        // Cargar presencia de usuarios (en línea / última vez)
-        const { data: usrData } = await supabase
-          .from('nexchat_users')
-          .select('id,phone,name,online,last_seen,bio,avatar')
-          .limit(120);
-        if (usrData) {
+        if (stResult?.data) {
+          sincronizarEstadosSeguros(stResult.data);
+        }
+
+        if (usrResult?.data) {
           const mapP = {};
-          usrData.forEach((u) => {
+          usrResult.data.forEach((u) => {
             const d = String(u.phone || '').replace(/[^0-9]/g, '');
             if (d) mapP[d] = u;
           });
           setUsersPresence(mapP);
-        }
-
-        // Marcar mi propio estado como "en línea" ahora mismo
-        await supabase
-          .from('nexchat_users')
-          .update({ online: true, last_seen: new Date().toISOString() })
-          .eq('phone', userProfile.phone);
-
-        // Cargar mensajes donde participe mi número, grupos o comunicados del Canal Oficial
-        if (myCleanDigits.length >= 6) {
-          const { data: msgData } = await supabase
-            .from('nexchat_messages')
-            .select('*')
-            .or(`chat_id.ilike.%${myCleanDigits}%,chat_id.eq.official_nexchat,chat_id.ilike.group_%`)
-            .order('timestamp', { ascending: true })
-            .limit(200);
-
-          if (msgData && msgData.length > 0) {
-            integrarMensajesNube(msgData);
-          }
         }
       } catch (e) {
         // Modo offline-first respaldado
       }
     };
 
+    // Sincronización incremental rápida cada 3.5s para que el primer mensaje y las fotos de estado nunca tarden
+    const sincronizarIncremental = async () => {
+      if (AppState.currentState && AppState.currentState !== 'active') return;
+      try {
+        if (myCleanDigits.length >= 6) {
+          const { data: recentMsgs } = await supabase
+            .from('nexchat_messages')
+            .select('*')
+            .or(`chat_id.ilike.%${myCleanDigits}%,chat_id.eq.official_nexchat,chat_id.ilike.group_%`)
+            .order('timestamp', { ascending: false })
+            .limit(25);
+
+          if (recentMsgs && recentMsgs.length > 0) {
+            const ordenados = [...recentMsgs].reverse();
+            ordenados.forEach((m) => {
+              if (!m || deletedMsgIdsRef.current.has(m.id)) return;
+              if (!processedMsgIdsRef.current.has(m.id)) {
+                if (m.sender_phone !== userProfile.phone) {
+                  recibirMensajeEnVivo(m);
+                } else {
+                  processedMsgIdsRef.current.add(m.id);
+                }
+              }
+            });
+          }
+        }
+
+        const { data: stData } = await supabase
+          .from('nexchat_statuses')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(25);
+        if (stData) {
+          sincronizarEstadosSeguros(stData);
+        }
+      } catch {}
+    };
+
     cargarDatosNube();
 
-    // Latido de presencia cada 45s y limpieza de estados vencidos de 24h
+    const fastSyncInterval = setInterval(sincronizarIncremental, 3500);
+
+    // Latido de presencia cada 40s y limpieza de estados vencidos de 24h
     const heartbeatInterval = setInterval(async () => {
       try {
         await supabase
@@ -357,12 +411,15 @@ function MainApp() {
         await supabase.from('nexchat_statuses').delete().lt('expires_at', Date.now());
         setStatuses((prev) => prev.filter((s) => !calcularTiempoRestanteEstado(s).expirado));
       } catch {}
-    }, 45000);
+    }, 40000);
 
-    // Detectar cuando el usuario minimiza o vuelve a abrir la app para actualizar "en línea" / "últ. vez"
+    // Detectar cuando el usuario minimiza o vuelve a abrir la app para sincronizar al instante
     const appStateSub = AppState.addEventListener('change', async (nextState) => {
       try {
         const isActive = nextState === 'active';
+        if (isActive) {
+          sincronizarIncremental();
+        }
         await supabase
           .from('nexchat_users')
           .update({ online: isActive, last_seen: new Date().toISOString() })
@@ -371,21 +428,59 @@ function MainApp() {
     });
 
     const channel = supabase
-      .channel('nexchat_global_realtime')
+      .channel('nexchat_global_realtime', {
+        config: { broadcast: { self: false } },
+      })
+      .on('broadcast', { event: 'fast_msg' }, ({ payload }) => {
+        if (!payload || deletedMsgIdsRef.current.has(payload.id)) return;
+        const roomId = payload.chat_id || payload.room_id || '';
+        if (
+          payload.sender_phone !== userProfile.phone &&
+          !processedMsgIdsRef.current.has(payload.id) &&
+          (roomId.includes(myCleanDigits) ||
+            roomId === 'official_nexchat' ||
+            String(roomId).startsWith('group_'))
+        ) {
+          recibirMensajeEnVivo(payload);
+        }
+      })
+      .on('broadcast', { event: 'fast_status' }, ({ payload }) => {
+        if (payload && !calcularTiempoRestanteEstado(payload).expirado) {
+          setStatuses((prev) => [payload, ...prev.filter((s) => s.id !== payload.id)]);
+        }
+      })
+      .on('broadcast', { event: 'fast_status_view' }, ({ payload }) => {
+        if (payload?.id && payload?.bg_color) {
+          setStatuses((prev) =>
+            prev.map((s) => (s.id === payload.id ? { ...s, bg_color: payload.bg_color } : s))
+          );
+        }
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nexchat_messages' },
-        (payload) => {
-          const nuevo = payload.new;
+        async (payload) => {
+          let nuevo = payload.new;
           if (!nuevo || deletedMsgIdsRef.current.has(nuevo.id)) return;
+          if (processedMsgIdsRef.current.has(nuevo.id)) return;
           const roomId = nuevo.chat_id || nuevo.room_id || '';
           if (
             nuevo.sender_phone !== userProfile.phone &&
-            !readMsgIdsRef.current.has(nuevo.id) &&
             (roomId.includes(myCleanDigits) ||
               roomId === 'official_nexchat' ||
               String(roomId).startsWith('group_'))
           ) {
+            // Si PostgreSQL TOAST omitió una imagen grande en el evento Realtime, descargarla completa
+            if (!nuevo.content) {
+              try {
+                const { data: fullMsg } = await supabase
+                  .from('nexchat_messages')
+                  .select('*')
+                  .eq('id', nuevo.id)
+                  .maybeSingle();
+                if (fullMsg) nuevo = fullMsg;
+              } catch {}
+            }
             recibirMensajeEnVivo(nuevo);
           }
         }
@@ -436,21 +531,48 @@ function MainApp() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nexchat_statuses' },
-        (payload) => {
-          if (payload.new && !calcularTiempoRestanteEstado(payload.new).expirado) {
-            setStatuses((prev) => [payload.new, ...prev.filter((s) => s.id !== payload.new.id)]);
+        async (payload) => {
+          let nuevoSt = payload.new;
+          if (!nuevoSt || calcularTiempoRestanteEstado(nuevoSt).expirado) return;
+          // Si PostgreSQL TOAST omitió la foto Base64 en el evento INSERT, traer la fila completa antes de mostrar
+          if (!nuevoSt.content) {
+            try {
+              const { data: fullSt } = await supabase
+                .from('nexchat_statuses')
+                .select('*')
+                .eq('id', nuevoSt.id)
+                .maybeSingle();
+              if (fullSt) nuevoSt = fullSt;
+            } catch {}
           }
+          if (!nuevoSt.content) return;
+          setStatuses((prev) => [
+            nuevoSt,
+            ...prev.filter((s) => s.id !== nuevoSt.id),
+          ]);
         }
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'nexchat_statuses' },
-        (payload) => {
-          if (payload.new) {
-            setStatuses((prev) =>
-              prev.map((s) => (s.id === payload.new.id ? payload.new : s))
-            );
-          }
+        async (payload) => {
+          const upd = payload.new;
+          if (!upd?.id) return;
+          // Preservar siempre el content (foto/texto) cuando se actualiza bg_color con las vistas (TOAST safe)
+          setStatuses((prev) =>
+            prev.map((s) =>
+              s.id === upd.id
+                ? {
+                    ...s,
+                    ...upd,
+                    content:
+                      upd.content && String(upd.content).length > 0
+                        ? upd.content
+                        : s.content,
+                  }
+                : s
+            )
+          );
         }
       )
       .on(
@@ -477,9 +599,13 @@ function MainApp() {
       )
       .subscribe();
 
+    realtimeChannelRef.current = channel;
+
     return () => {
+      clearInterval(fastSyncInterval);
       clearInterval(heartbeatInterval);
       appStateSub.remove();
+      realtimeChannelRef.current = null;
       supabase.removeChannel(channel);
     };
   }, [userProfile]);
@@ -494,6 +620,11 @@ function MainApp() {
         const clearedTs = clearedChatsRef.current[roomId];
         if (clearedTs && m.timestamp && Number(m.timestamp) <= Number(clearedTs)) return;
         if (String(m.content || '').includes('Este mensaje fue eliminado')) return;
+
+        processedMsgIdsRef.current.add(m.id);
+        if (m.timestamp && Number(m.timestamp) > lastSyncTimestampRef.current) {
+          lastSyncTimestampRef.current = Number(m.timestamp);
+        }
 
         const esMio = m.sender_phone === userProfile.phone;
         if (esMio || selectedChatIdRef.current === roomId) {
@@ -559,7 +690,16 @@ function MainApp() {
   };
 
   const recibirMensajeEnVivo = async (m) => {
+    if (!m?.id || processedMsgIdsRef.current.has(m.id)) return;
+    processedMsgIdsRef.current.add(m.id);
+
     const roomId = m.chat_id || m.room_id;
+    // Si llega un mensaje nuevo en vivo, reactivar la sala si había sido vaciada antes
+    if (clearedChatsRef.current[roomId]) {
+      delete clearedChatsRef.current[roomId];
+      persistClearedChats(clearedChatsRef.current);
+    }
+
     const plain = descifrarMensajeE2EE(m.content || m.ciphertext, roomId);
     const hora = m.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const msgObj = {
@@ -631,6 +771,10 @@ function MainApp() {
   // 3. Crear nuevo chat 1 a 1 con un amigo real
   const handleCreateDirectChat = async (peerPhone, customName, peerData, keepInModal = false) => {
     const roomId = generarRoomIdPrivado(userProfile.phone, peerPhone);
+    if (clearedChatsRef.current[roomId]) {
+      delete clearedChatsRef.current[roomId];
+      persistClearedChats(clearedChatsRef.current);
+    }
     const existing = chats.find((c) => c.id === roomId);
     if (existing) {
       if (!keepInModal) setSelectedChatId(roomId);
@@ -716,13 +860,20 @@ function MainApp() {
   // 5. Enviar mensaje en chat activo (o enviar comunicado global si es en NexChat Oficial como Admin)
   const handleSendMessage = async ({ text, mediaUri, mediaType, ephemeral }) => {
     if (!selectedChatId) return;
+    const targetRoomId = selectedChatId;
+    if (clearedChatsRef.current[targetRoomId]) {
+      delete clearedChatsRef.current[targetRoomId];
+      persistClearedChats(clearedChatsRef.current);
+    }
+
     const cleanText = sanitizarEntrada(text);
-    const esCanalOficial = selectedChatId === 'official_nexchat';
+    const esCanalOficial = targetRoomId === 'official_nexchat';
     const msgId = esCanalOficial
       ? `official_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    processedMsgIdsRef.current.add(msgId);
     readMsgIdsRef.current.add(msgId);
     persistReadMsgIds(readMsgIdsRef.current);
 
@@ -740,7 +891,7 @@ function MainApp() {
 
     setChats((prev) => {
       const updated = prev.map((c) =>
-        c.id === selectedChatId
+        c.id === targetRoomId
           ? { ...c, messages: [...(c.messages || []), nuevoMsg] }
           : c
       );
@@ -753,7 +904,7 @@ function MainApp() {
       setTimeout(() => {
         setChats((prev) =>
           prev.map((c) =>
-            c.id === selectedChatId
+            c.id === targetRoomId
               ? { ...c, messages: (c.messages || []).filter((m) => m.id !== msgId) }
               : c
           )
@@ -761,28 +912,34 @@ function MainApp() {
       }, 15000);
     }
 
-    // Subir cifrado a Supabase 24/7
+    // Enviar por doble vía simultánea: Broadcast WebSocket (~50ms) + Base de Datos Supabase 24/7
     try {
       const dbType =
         mediaType === 'image' || mediaType === 'audio' || mediaType === 'file'
           ? mediaType
           : 'text';
-      const cipher = cifrarMensajeE2EE(mediaType === 'image' ? mediaUri : cleanText, selectedChatId);
-      await supabase.from('nexchat_messages').insert([
-        {
-          id: msgId,
-          chat_id: selectedChatId,
-          sender_id: esCanalOficial ? 'nexchat_official' : (userProfile.id || userProfile.phone),
-          sender_phone: esCanalOficial ? 'OFICIAL' : userProfile.phone,
-          sender_name: esCanalOficial ? 'NexChat Oficial ✅' : userProfile.name,
-          type: dbType,
-          content: cipher,
-          time: hora,
-          timestamp: Date.now(),
-          expires_at: ephemeral ? Date.now() + 15000 : null,
-          status: 'read',
-        },
-      ]);
+      const cipher = cifrarMensajeE2EE(mediaType === 'image' ? mediaUri : cleanText, targetRoomId);
+      const rowPayload = {
+        id: msgId,
+        chat_id: targetRoomId,
+        sender_id: esCanalOficial ? 'nexchat_official' : (userProfile.id || userProfile.phone),
+        sender_phone: esCanalOficial ? 'OFICIAL' : userProfile.phone,
+        sender_name: esCanalOficial ? 'NexChat Oficial ✅' : userProfile.name,
+        type: dbType,
+        content: cipher,
+        time: hora,
+        timestamp: Date.now(),
+        expires_at: ephemeral ? Date.now() + 15000 : null,
+        status: 'read',
+      };
+
+      if (realtimeChannelRef.current) {
+        realtimeChannelRef.current
+          .send({ type: 'broadcast', event: 'fast_msg', payload: rowPayload })
+          .catch(() => {});
+      }
+
+      await supabase.from('nexchat_messages').insert([rowPayload]);
     } catch (e) {}
   };
 
@@ -804,6 +961,11 @@ function MainApp() {
     setStatuses((prev) => [newSt, ...prev]);
 
     try {
+      if (realtimeChannelRef.current) {
+        realtimeChannelRef.current
+          .send({ type: 'broadcast', event: 'fast_status', payload: newSt })
+          .catch(() => {});
+      }
       await supabase.from('nexchat_statuses').insert([newSt]);
     } catch (e) {}
   };
@@ -820,10 +982,23 @@ function MainApp() {
     const newBg = serializarColorYVistasEstado(color, updatedViews);
 
     setStatuses((prev) =>
-      prev.map((item) => (item.id === st.id ? { ...item, bg_color: newBg } : item))
+      prev.map((item) =>
+        item.id === st.id
+          ? { ...item, bg_color: newBg, content: item.content || st.content }
+          : item
+      )
     );
 
     try {
+      if (realtimeChannelRef.current) {
+        realtimeChannelRef.current
+          .send({
+            type: 'broadcast',
+            event: 'fast_status_view',
+            payload: { id: st.id, bg_color: newBg },
+          })
+          .catch(() => {});
+      }
       await supabase
         .from('nexchat_statuses')
         .update({ bg_color: newBg })
@@ -991,7 +1166,7 @@ function MainApp() {
 
   // 14. Vaciar o eliminar un chat permanentemente
   const handleClearChat = async (chatId) => {
-    clearedChatsRef.current[chatId] = Date.now() + 5000;
+    clearedChatsRef.current[chatId] = Date.now();
     persistClearedChats(clearedChatsRef.current);
 
     setChats((prev) => {
@@ -1011,7 +1186,7 @@ function MainApp() {
   };
 
   const handleDeleteChat = async (chatId) => {
-    clearedChatsRef.current[chatId] = Date.now() + 5000;
+    clearedChatsRef.current[chatId] = Date.now();
     persistClearedChats(clearedChatsRef.current);
 
     setChats((prev) => {

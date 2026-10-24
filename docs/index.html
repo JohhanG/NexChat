@@ -3,49 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NexChat Global — Descarga Oficial APK Android & iOS</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>NexChat Global — Descarga Oficial APK</title>
+  <link rel="icon" type="image/png" href="./icon.png" />
   <style>
     :root {
-      --bg: #071318;
-      --card: #0F222A;
-      --border: #1C3B47;
-      --primary: #10B981;
-      --primary-dark: #059669;
-      --text: #F0FDF4;
-      --muted: #94A3B8;
+      --bg: #0E1621;
+      --card: #17212B;
+      --card-alt: #1E2C3A;
+      --border: #22303F;
+      --primary: #00A884;
+      --primary-hover: #059669;
+      --accent: #38BDF8;
+      --text: #F1F5F9;
+      --muted: #8A9AA9;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
     body {
-      background: radial-gradient(circle at top, #064E3B 0%, var(--bg) 55%);
+      background: radial-gradient(circle at 50% 0%, #09352c 0%, var(--bg) 55%);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 36px 18px 60px;
+      padding: 36px 18px 64px;
     }
-    .badge {
-      background: rgba(16, 185, 129, 0.16);
-      border: 1px solid var(--primary);
-      color: #6EE7B7;
-      padding: 6px 16px;
+    .top-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 168, 132, 0.16);
+      border: 1px solid rgba(0, 168, 132, 0.45);
+      color: #34D399;
+      padding: 7px 16px;
       border-radius: 99px;
       font-size: 12px;
       font-weight: 800;
-      letter-spacing: 0.8px;
-      margin-bottom: 18px;
+      letter-spacing: 0.6px;
+      margin-bottom: 20px;
       text-transform: uppercase;
+    }
+    .dot-live {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10B981;
+      box-shadow: 0 0 10px #10B981;
     }
     h1 {
       font-size: clamp(32px, 6vw, 48px);
       font-weight: 900;
       text-align: center;
-      letter-spacing: -1px;
-      margin-bottom: 12px;
+      letter-spacing: -0.8px;
+      margin-bottom: 10px;
     }
     .subtitle {
       color: var(--muted);
-      max-width: 580px;
+      max-width: 600px;
       text-align: center;
       font-size: 16px;
       line-height: 1.6;
@@ -54,110 +75,186 @@
     .hero-card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 30px;
+      border-radius: 26px;
+      padding: 32px 26px;
       width: 100%;
-      max-width: 540px;
-      box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      max-width: 560px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 30px;
     }
-    .app-icon {
-      width: 88px;
-      height: 88px;
-      border-radius: 22px;
-      background: linear-gradient(135deg, #10B981, #047857);
+    .app-logo {
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      object-fit: cover;
+      margin: 0 auto 16px;
+      display: block;
+      box-shadow: 0 12px 30px rgba(0, 168, 132, 0.35);
+      border: 2px solid rgba(0, 168, 132, 0.5);
+    }
+    .version-tag {
+      display: inline-block;
+      background: var(--card-alt);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 10px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+    }
+    .btn-apk {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 44px;
-      margin: 0 auto 16px;
-      box-shadow: 0 12px 28px rgba(16,185,129,0.35);
-    }
-    .btn-apk {
-      display: block;
+      gap: 10px;
       width: 100%;
-      background: linear-gradient(135deg, #10B981, #059669);
-      color: #052E16;
+      background: linear-gradient(135deg, #00A884, #059669);
+      color: #FFFFFF;
       font-weight: 900;
       font-size: 17px;
-      padding: 17px 22px;
+      padding: 18px 22px;
       border-radius: 16px;
       text-decoration: none;
-      margin-top: 20px;
+      margin-top: 22px;
       transition: transform 0.15s ease, box-shadow 0.15s ease;
-      box-shadow: 0 10px 25px rgba(16,185,129,0.3);
+      box-shadow: 0 12px 28px rgba(0, 168, 132, 0.35);
     }
     .btn-apk:hover {
       transform: translateY(-2px);
-      box-shadow: 0 14px 32px rgba(16,185,129,0.45);
+      box-shadow: 0 16px 34px rgba(0, 168, 132, 0.5);
     }
     .btn-secondary {
       display: block;
       width: 100%;
-      background: rgba(255,255,255,0.06);
+      background: var(--card-alt);
       border: 1px solid var(--border);
       color: var(--text);
       font-weight: 800;
       font-size: 14px;
-      padding: 13px 18px;
+      padding: 14px 18px;
       border-radius: 14px;
       text-decoration: none;
       margin-top: 12px;
+      transition: background 0.15s ease;
+    }
+    .btn-secondary:hover {
+      background: #253646;
+    }
+    .qr-section {
+      margin-top: 24px;
+      padding-top: 22px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .qr-box {
+      background: #FFFFFF;
+      padding: 12px;
+      border-radius: 16px;
+      margin-top: 10px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+    }
+    .qr-box img {
+      width: 150px;
+      height: 150px;
+      display: block;
     }
     .features {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 14px;
       width: 100%;
-      max-width: 780px;
+      max-width: 820px;
     }
     .feat-box {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 18px;
-      padding: 18px;
+      padding: 20px;
     }
-    .feat-box h3 { font-size: 15px; margin-bottom: 6px; color: #6EE7B7; }
-    .feat-box p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .feat-box h3 {
+      font-size: 15px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: #34D399;
+    }
+    .feat-box p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .footer {
+      margin-top: 40px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <div class="badge">● Nube Supabase 24/7 Activa • Cifrado Militar SHA-256</div>
+  <div class="top-pill">
+    <span class="dot-live"></span>
+    Nube 24/7 Activa • Cifrado E2EE SHA-256
+  </div>
+
   <h1>NexChat Global</h1>
   <p class="subtitle">
-    Mensajería instantánea global con cifrado de extremo a extremo, estados de 24h, notas de voz, llamadas y actualizaciones automáticas OTA sin necesidad de tener tu PC encendido.
+    Mensajería instantánea global con cifrado de extremo a extremo, estados de 24 horas, grupos interactivos, notas de voz, llamadas y actualizaciones automáticas OTA.
   </p>
 
   <div class="hero-card">
-    <div class="app-icon">💬</div>
-    <h2 style="font-size: 22px; font-weight: 900;">NexChat v3.0 (Android APK)</h2>
-    <p style="color: var(--muted); font-size: 13px; margin-top: 6px;">
-      Instalador directo oficial • Incluye Canal Oficial Verificado ✅ y Nube 24/7
+    <img class="app-logo" src="./icon.png" alt="NexChat Oficial" />
+    <h2 style="font-size: 23px; font-weight: 900;">NexChat Oficial (Android APK)</h2>
+    <span class="version-tag">Versión 3.5 Global • Auto-Actualizable (OTA)</span>
+    <p style="color: var(--muted); font-size: 13px; margin-top: 10px; line-height: 1.5;">
+      Descarga e instala la aplicación una sola vez. Todas las mejoras y nuevas funciones llegan automáticamente a tu celular sin volver a reinstalar.
     </p>
 
-    <a class="btn-apk" href="https://expo.dev/artifacts/eas/Z9MezVA879L4sP9PuMq0s2O21Ie58hUQVQlAP14SZVU.apk" target="_blank">
-      📲 Descargar APK Oficial para Android (Directo)
+    <a class="btn-apk" href="https://expo.dev/artifacts/eas/Z9MezVA879L4sP9PuMq0s2O21Ie58hUQVQlAP14SZVU.apk" target="_blank" rel="noopener">
+      📲 Descargar APK Oficial para Android
     </a>
 
-    <a class="btn-secondary" href="https://expo.dev/accounts/johhan_g/projects/nexchat/builds/0d0cc4d4-c957-41f2-a617-444da3f6e8fc" target="_blank">
-      🔗 Ver Código QR e Instalador en Expo Cloud
+    <a class="btn-secondary" href="https://expo.dev/accounts/johhan_g/projects/nexchat/builds/0d0cc4d4-c957-41f2-a617-444da3f6e8fc" target="_blank" rel="noopener">
+      ☁️ Ver Instalador en Expo Cloud
     </a>
+
+    <div class="qr-section">
+      <p style="font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;">
+        O escanea con la cámara de tu celular para descargar el APK
+      </p>
+      <div class="qr-box">
+        <img
+          src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https%3A%2F%2Fexpo.dev%2Fartifacts%2Feas%2FZ9MezVA879L4sP9PuMq0s2O21Ie58hUQVQlAP14SZVU.apk"
+          alt="Código QR Descarga APK NexChat"
+        />
+      </div>
+    </div>
   </div>
 
   <div class="features">
     <div class="feat-box">
-      <h3>🔒 Cifrado E2EE + PIN 2FA</h3>
-      <p>Tus mensajes se cifran con llaves SHA-256 únicas por sala y tu cuenta está protegida con PIN de segundo factor.</p>
+      <h3>🔒 Blindaje E2EE + PIN 2FA</h3>
+      <p>Conversaciones protegidas con huellas criptográficas de 40 dígitos (SHA-256), bloqueo por PIN y mensajes temporales.</p>
     </div>
     <div class="feat-box">
-      <h3>☁️ Funciona 24/7 Sin PC</h3>
-      <p>Conectado directamente a Supabase Realtime en la nube para enviar y recibir mensajes con amigos de cualquier país.</p>
+      <h3>🌍 Directorio Mundial y Grupos</h3>
+      <p>Agrega contactos de cualquier país del mundo, verifica quién está en línea en tiempo real y crea grupos con un solo toque.</p>
     </div>
     <div class="feat-box">
-      <h3>🚀 Actualizaciones OTA</h3>
-      <p>Igual que Maná: cualquier mejora nueva llega directo a los celulares instalados sin volver a descargar el APK.</p>
+      <h3>⭕ Estados de 24 Horas</h3>
+      <p>Comparte fotos, textos y emojis que se auto-eliminan a las 24 horas y revisa la lista exacta de quiénes vieron tu estado.</p>
     </div>
+    <div class="feat-box">
+      <h3>🚀 Actualizaciones en la Nube (OTA)</h3>
+      <p>Recibe todas las mejoras de diseño y nuevas funciones directamente desde la nube sin tener que reinstalar el APK.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    © 2026 NexChat Global • Seguridad Criptográfica E2EE 24/7
   </div>
 </body>
 </html>
