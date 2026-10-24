@@ -6,7 +6,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
-import { generarHuellaSeguridad, formatearEstadoConexion } from '../lib/seguridad';
+import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
 
 const LISTA_EMOJIS = [
   '😀', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😇',
@@ -190,6 +190,7 @@ export default function ChatDetalleScreen({
 
   const fingerprint = generarHuellaSeguridad(userProfile.phone, chat.peerPhone || chat.id);
   const bloquesHuella = fingerprint.split(/\s+/).filter(Boolean);
+  const soyAdminOficial = esAdminOficialNexChat(userProfile);
   const estadoConexion = formatearEstadoConexion(
     chat.peerPhone || chat.phone,
     usersPresence,
@@ -513,8 +514,8 @@ export default function ChatDetalleScreen({
         </View>
       )}
 
-      {/* BARRA INFERIOR DE MENSAJE ESTILO WHATSAPP & TELEGRAM */}
-      {chat.official ? (
+      {/* BARRA INFERIOR DE MENSAJE ESTILO WHATSAPP & TELEGRAM (HABILITADA EN CANAL OFICIAL PARA EL ADMIN) */}
+      {chat.official && !soyAdminOficial ? (
         <View style={[styles.officialFooter, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <Ionicons name="megaphone-outline" size={16} color={colors.primary} />
           <Text style={[styles.officialFooterText, { color: colors.textMuted }]}>
@@ -522,69 +523,98 @@ export default function ChatDetalleScreen({
           </Text>
         </View>
       ) : (
-        <View style={[styles.inputBar, { backgroundColor: colors.bg }]}>
-          <View style={[styles.inputPillContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <TouchableOpacity
-              onPress={() => {
-                setPickerTab('emojis');
-                setShowPicker(!showPicker);
+        <View style={{ backgroundColor: colors.bg }}>
+          {chat.official && soyAdminOficial && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                backgroundColor: 'rgba(0,168,132,0.16)',
+                borderTopWidth: 1,
+                borderTopColor: 'rgba(0,168,132,0.35)',
               }}
-              style={styles.pillIconBtn}
             >
-              <Ionicons
-                name={showPicker && pickerTab === 'emojis' ? 'happy' : 'happy-outline'}
-                size={23}
-                color={showPicker && pickerTab === 'emojis' ? colors.primary : colors.textMuted}
-              />
-            </TouchableOpacity>
-
-            <TextInput
-              style={[styles.pillInput, { color: colors.text }]}
-              placeholder={recordingAudio ? `Grabando nota de voz (${recordSeconds}s)...` : 'Mensaje'}
-              placeholderTextColor={recordingAudio ? '#EF4444' : colors.textMuted}
-              value={text}
-              onChangeText={setText}
-              editable={!recordingAudio}
-              onSubmitEditing={handleSendText}
-            />
-
-            <TouchableOpacity
-              onPress={() => {
-                setPickerTab('stickers');
-                setShowPicker(true);
-              }}
-              style={styles.pillIconBtn}
-            >
-              <Ionicons
-                name="sparkles-outline"
-                size={21}
-                color={showPicker && pickerTab === 'stickers' ? colors.primary : colors.textMuted}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={handlePickImage} style={styles.pillIconBtn}>
-              <Ionicons name="camera-outline" size={23} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {text.trim().length > 0 ? (
-            <TouchableOpacity
-              onPress={handleSendText}
-              style={[styles.sendBtn, { backgroundColor: colors.primary }]}
-            >
-              <Ionicons name="send" size={19} color="#FFFFFF" />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={handleToggleAudio}
-              style={[
-                styles.sendBtn,
-                { backgroundColor: recordingAudio ? '#EF4444' : colors.primary },
-              ]}
-            >
-              <Ionicons name={recordingAudio ? 'stop' : 'mic'} size={22} color="#FFFFFF" />
-            </TouchableOpacity>
+              <Ionicons name="megaphone" size={14} color="#10B981" />
+              <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '900' }}>
+                MODO ADMIN OFICIAL • Tu mensaje llegará a todos como NexChat Oficial ✅
+              </Text>
+            </View>
           )}
+          <View style={[styles.inputBar, { backgroundColor: colors.bg }]}>
+            <View style={[styles.inputPillContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TouchableOpacity
+                onPress={() => {
+                  setPickerTab('emojis');
+                  setShowPicker(!showPicker);
+                }}
+                style={styles.pillIconBtn}
+              >
+                <Ionicons
+                  name={showPicker && pickerTab === 'emojis' ? 'happy' : 'happy-outline'}
+                  size={23}
+                  color={showPicker && pickerTab === 'emojis' ? colors.primary : colors.textMuted}
+                />
+              </TouchableOpacity>
+
+              <TextInput
+                style={[styles.pillInput, { color: colors.text }]}
+                placeholder={
+                  recordingAudio
+                    ? `Grabando nota de voz (${recordSeconds}s)...`
+                    : chat.official
+                    ? 'Escribir comunicado oficial para todos...'
+                    : 'Mensaje'
+                }
+                placeholderTextColor={recordingAudio ? '#EF4444' : colors.textMuted}
+                value={text}
+                onChangeText={setText}
+                editable={!recordingAudio}
+                multiline={chat.official}
+                onSubmitEditing={handleSendText}
+              />
+
+              <TouchableOpacity
+                onPress={() => {
+                  setPickerTab('stickers');
+                  setShowPicker(true);
+                }}
+                style={styles.pillIconBtn}
+              >
+                <Ionicons
+                  name="sparkles-outline"
+                  size={21}
+                  color={showPicker && pickerTab === 'stickers' ? colors.primary : colors.textMuted}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handlePickImage} style={styles.pillIconBtn}>
+                <Ionicons name="camera-outline" size={23} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {text.trim().length > 0 ? (
+              <TouchableOpacity
+                onPress={handleSendText}
+                style={[styles.sendBtn, { backgroundColor: colors.primary }]}
+              >
+                <Ionicons name="send" size={19} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleToggleAudio}
+                style={[
+                  styles.sendBtn,
+                  { backgroundColor: recordingAudio ? '#EF4444' : colors.primary },
+                ]}
+              >
+                <Ionicons name={recordingAudio ? 'stop' : 'mic'} size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
 

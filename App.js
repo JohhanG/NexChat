@@ -381,6 +381,7 @@ function MainApp() {
           const roomId = nuevo.chat_id || nuevo.room_id || '';
           if (
             nuevo.sender_phone !== userProfile.phone &&
+            !readMsgIdsRef.current.has(nuevo.id) &&
             (roomId.includes(myCleanDigits) ||
               roomId === 'official_nexchat' ||
               String(roomId).startsWith('group_'))
@@ -712,18 +713,24 @@ function MainApp() {
     } catch (e) {}
   };
 
-  // 5. Enviar mensaje en chat activo
+  // 5. Enviar mensaje en chat activo (o enviar comunicado global si es en NexChat Oficial como Admin)
   const handleSendMessage = async ({ text, mediaUri, mediaType, ephemeral }) => {
     if (!selectedChatId) return;
     const cleanText = sanitizarEntrada(text);
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const esCanalOficial = selectedChatId === 'official_nexchat';
+    const msgId = esCanalOficial
+      ? `official_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    readMsgIdsRef.current.add(msgId);
+    persistReadMsgIds(readMsgIdsRef.current);
 
     const nuevoMsg = {
       id: msgId,
-      sender: 'me',
-      senderPhone: userProfile.phone,
-      senderName: userProfile.name,
+      sender: esCanalOficial ? 'them' : 'me',
+      senderPhone: esCanalOficial ? 'OFICIAL' : userProfile.phone,
+      senderName: esCanalOficial ? 'NexChat Oficial ✅' : userProfile.name,
       text: cleanText,
       mediaUri,
       mediaType,
@@ -731,13 +738,15 @@ function MainApp() {
       time: hora,
     };
 
-    setChats((prev) =>
-      prev.map((c) =>
+    setChats((prev) => {
+      const updated = prev.map((c) =>
         c.id === selectedChatId
           ? { ...c, messages: [...(c.messages || []), nuevoMsg] }
           : c
-      )
-    );
+      );
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
 
     // Si es efímero (15 segundos), autodestruir
     if (ephemeral) {
@@ -763,9 +772,9 @@ function MainApp() {
         {
           id: msgId,
           chat_id: selectedChatId,
-          sender_id: userProfile.id || userProfile.phone,
-          sender_phone: userProfile.phone,
-          sender_name: userProfile.name,
+          sender_id: esCanalOficial ? 'nexchat_official' : (userProfile.id || userProfile.phone),
+          sender_phone: esCanalOficial ? 'OFICIAL' : userProfile.phone,
+          sender_name: esCanalOficial ? 'NexChat Oficial ✅' : userProfile.name,
           type: dbType,
           content: cipher,
           time: hora,
