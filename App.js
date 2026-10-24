@@ -327,12 +327,12 @@ function MainApp() {
           .update({ online: true, last_seen: new Date().toISOString() })
           .eq('phone', userProfile.phone);
 
-        // Cargar mensajes donde participe mi número
+        // Cargar mensajes donde participe mi número, grupos o comunicados del Canal Oficial
         if (myCleanDigits.length >= 6) {
           const { data: msgData } = await supabase
             .from('nexchat_messages')
             .select('*')
-            .ilike('chat_id', `%${myCleanDigits}%`)
+            .or(`chat_id.ilike.%${myCleanDigits}%,chat_id.eq.official_nexchat,chat_id.ilike.group_%`)
             .order('timestamp', { ascending: true })
             .limit(200);
 
@@ -379,7 +379,12 @@ function MainApp() {
           const nuevo = payload.new;
           if (!nuevo || deletedMsgIdsRef.current.has(nuevo.id)) return;
           const roomId = nuevo.chat_id || nuevo.room_id || '';
-          if (nuevo.sender_phone !== userProfile.phone && roomId.includes(myCleanDigits)) {
+          if (
+            nuevo.sender_phone !== userProfile.phone &&
+            (roomId.includes(myCleanDigits) ||
+              roomId === 'official_nexchat' ||
+              String(roomId).startsWith('group_'))
+          ) {
             recibirMensajeEnVivo(nuevo);
           }
         }
