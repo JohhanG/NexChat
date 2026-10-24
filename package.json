@@ -7,7 +7,6 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:apk": "eas build -p android --profile preview",
     "actualizar:preview": "eas update --channel preview",
     "actualizar:produccion": "eas update --channel production"
   },

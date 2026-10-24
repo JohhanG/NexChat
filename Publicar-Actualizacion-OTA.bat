@@ -7,7 +7,7 @@ echo ========================================================
 echo.
 set PATH=C:\nvm4w\nodejs;%APPDATA%\npm;%PATH%
 cd /d "%~dp0"
-call npx eas-cli update --branch preview --message "Actualizacion global NexChat"
+call npx eas-cli update --channel preview --message "Actualizacion global NexChat"
 echo.
 echo Listo! Todos los celulares con el APK recibiran los cambios al abrir la app.
 pause
