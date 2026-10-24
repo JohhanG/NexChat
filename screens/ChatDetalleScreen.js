@@ -5,23 +5,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
-
-// Carga segura y tolerante de librerías nativas para evitar pantalla en blanco en APKs anteriores
-let AudioModule = null;
-try {
-  AudioModule = require('expo-av')?.Audio || null;
-} catch (e) {
-  console.log('[SafeModule] expo-av no disponible:', e);
-}
-const Audio = AudioModule;
-
-let FileSystemModule = null;
-try {
-  FileSystemModule = require('expo-file-system') || null;
-} catch (e) {
-  console.log('[SafeModule] expo-file-system no disponible:', e);
-}
-const FileSystem = FileSystemModule;
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
@@ -205,7 +190,7 @@ export default function ChatDetalleScreen({
     setAudioSeconds(0);
 
     // 1. Si es audio grabado real en Base64 o URL (expo-av)
-    if (Audio && msg.mediaUri && (msg.mediaUri.startsWith('data:audio') || msg.mediaUri.startsWith('http') || msg.mediaUri.startsWith('file:'))) {
+    if (msg.mediaUri && (msg.mediaUri.startsWith('data:audio') || msg.mediaUri.startsWith('http') || msg.mediaUri.startsWith('file:'))) {
       try {
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
@@ -349,14 +334,6 @@ export default function ChatDetalleScreen({
 
   const handleToggleAudio = async () => {
     if (!recordingAudio) {
-      if (!Audio || !FileSystem) {
-        Alert.alert(
-          'Actualizar APK',
-          'Para habilitar la grabación de micrófono nativa, descarga e instala la nueva APK oficial desde https://johhang.github.io/NexChat/',
-          [{ text: 'Entendido' }]
-        );
-        return;
-      }
       // Iniciar grabación real de micrófono
       try {
         const perm = await Audio.requestPermissionsAsync();
