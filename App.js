@@ -352,13 +352,13 @@ function MainApp() {
   };
 
   // 4. Crear nuevo grupo
-  const handleCreateGroupChat = async (groupName, membersList) => {
+  const handleCreateGroupChat = async (groupName, membersList, groupAvatar = '👥') => {
     const roomId = `group_${Date.now()}_${userProfile.phone.replace(/[^0-9]/g, '')}`;
     const allMembers = Array.from(new Set([userProfile.phone, ...membersList]));
     const nuevoGrupo = {
       id: roomId,
       name: groupName,
-      avatar: '👥',
+      avatar: groupAvatar || '👥',
       isGroup: true,
       members: allMembers,
       online: true,
@@ -384,7 +384,7 @@ function MainApp() {
           is_group: true,
           name: groupName,
           phone: 'Grupo Global',
-          avatar: '👥',
+          avatar: groupAvatar || '👥',
           status: 'Grupo Global • 🔒 E2EE',
           created_by: userProfile.phone,
         },
