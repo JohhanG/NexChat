@@ -6,7 +6,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
-import { generarHuellaSeguridad } from '../lib/seguridad';
+import { generarHuellaSeguridad, formatearEstadoConexion } from '../lib/seguridad';
 
 const LISTA_EMOJIS = [
   '😀', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😇',
@@ -42,12 +42,15 @@ function obtenerIniciales(nombre = '') {
 export default function ChatDetalleScreen({
   chat,
   userProfile,
+  usersPresence = {},
+  allChats = [],
   onBack,
   onSendMessage,
   onStartCall,
   onDeleteMessageForMe,
   onDeleteMessageForAll,
   onEditContactName,
+  onUpdateGroupMembers,
   onClearChat,
   onDeleteChat,
 }) {
@@ -62,6 +65,7 @@ export default function ChatDetalleScreen({
   // Modal Ficha de Contacto (Estilo WhatsApp & Telegram)
   const [infoModal, setInfoModal] = useState(false);
   const [editedName, setEditedName] = useState(chat.name || '');
+  const [showAddGroupMembers, setShowAddGroupMembers] = useState(false);
 
   // Modal Eliminar Mensaje
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -162,6 +166,22 @@ export default function ChatDetalleScreen({
 
   const fingerprint = generarHuellaSeguridad(userProfile.phone, chat.peerPhone || chat.id);
   const bloquesHuella = fingerprint.split(/\s+/).filter(Boolean);
+  const estadoConexion = formatearEstadoConexion(
+    chat.peerPhone || chat.phone,
+    usersPresence,
+    chat.official,
+    chat.isGroup,
+    chat.members?.length
+  );
+
+  // Contactos de mi agenda para añadir rápidamente a un grupo
+  const contactosDisponiblesGrupo = (Array.isArray(allChats) ? allChats : [])
+    .filter((c) => c && !c.official && !c.isGroup && (c.peerPhone || c.phone))
+    .map((c) => ({
+      phone: c.peerPhone || c.phone,
+      name: c.name || c.peerPhone || c.phone,
+    }));
+
   const esAvatarImagen =
     chat.avatar && (chat.avatar.startsWith('http') || chat.avatar.startsWith('data:image'));
 
@@ -232,13 +252,25 @@ export default function ChatDetalleScreen({
               <Text style={styles.headerName} numberOfLines={1}>{chat.name}</Text>
               {chat.official && <Ionicons name="checkmark-circle" size={16} color="#00A884" />}
             </View>
-            <Text style={styles.headerStatus} numberOfLines={1}>
-              {chat.official
-                ? 'Canal Oficial Verificado'
-                : chat.isGroup
-                ? `Grupo • Toca aquí para info`
-                : `en línea • toca para info del contacto`}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 }}>
+              <View
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 3.5,
+                  backgroundColor: estadoConexion.isOnline ? '#10B981' : '#94A3B8',
+                }}
+              />
+              <Text
+                style={[
+                  styles.headerStatus,
+                  estadoConexion.isOnline && { color: '#34D399', fontWeight: '700' },
+                ]}
+                numberOfLines={1}
+              >
+                {estadoConexion.headerText}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
 
@@ -615,7 +647,7 @@ export default function ChatDetalleScreen({
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Avatar Grande + Nombre + Teléfono */}
+              {/* Avatar Grande + Nombre + Teléfono + Estado de Conexión */}
               <View style={styles.sheetProfileHero}>
                 {renderAvatarCircle(82)}
                 <Text style={[styles.sheetContactName, { color: colors.text }]}>
@@ -624,7 +656,165 @@ export default function ChatDetalleScreen({
                 <Text style={[styles.sheetContactPhone, { color: colors.primary }]}>
                   {chat.peerPhone || (chat.official ? 'Cuenta Oficial Verificada' : 'Grupo Global')}
                 </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 5,
+                    borderRadius: 14,
+                    backgroundColor: estadoConexion.isOnline
+                      ? 'rgba(16,185,129,0.14)'
+                      : colors.inputBg,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: estadoConexion.isOnline ? '#10B981' : '#94A3B8',
+                    }}
+                  />
+                  <Text
+                    style={{
+                      color: estadoConexion.isOnline ? '#10B981' : colors.textMuted,
+                      fontSize: 12,
+                      fontWeight: '800',
+                    }}
+                  >
+                    {estadoConexion.badgeText}
+                  </Text>
+                </View>
               </View>
+
+              {/* GESTIÓN DE PARTICIPANTES DEL GRUPO (AÑADIR CON 1 TOQUE O QUITAR) */}
+              {chat.isGroup && (
+                <View style={[styles.sheetSection, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="people" size={17} color={colors.primary} />
+                      <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 0 }]}>
+                        PARTICIPANTES ({(chat.members || []).length || 1})
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setShowAddGroupMembers(!showAddGroupMembers)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        backgroundColor: colors.primary,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 10,
+                      }}
+                    >
+                      <Ionicons name={showAddGroupMembers ? 'close' : 'person-add'} size={13} color="#FFF" />
+                      <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>
+                        {showAddGroupMembers ? 'Cerrar lista' : '+ Añadir persona'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {showAddGroupMembers && (
+                    <View style={{ marginBottom: 10, padding: 10, borderRadius: 12, backgroundColor: colors.card }}>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 6 }}>
+                        TOCA UN CONTACTO PARA AÑADIRLO AL GRUPO:
+                      </Text>
+                      {contactosDisponiblesGrupo.length === 0 ? (
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                          Aún no tienes otros contactos en tu agenda de chats.
+                        </Text>
+                      ) : (
+                        contactosDisponiblesGrupo.map((c) => {
+                          const yaEsta = (chat.members || []).includes(c.phone);
+                          return (
+                            <TouchableOpacity
+                              key={c.phone}
+                              onPress={() => {
+                                if (!onUpdateGroupMembers) return;
+                                const actuales = Array.isArray(chat.members) ? chat.members : [userProfile.phone];
+                                const nuevos = yaEsta
+                                  ? actuales.filter((p) => p !== c.phone)
+                                  : [...actuales, c.phone];
+                                onUpdateGroupMembers(chat.id, nuevos);
+                              }}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                paddingVertical: 8,
+                                borderBottomWidth: 1,
+                                borderBottomColor: colors.border,
+                              }}
+                            >
+                              <View>
+                                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>
+                                  {c.name}
+                                </Text>
+                                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{c.phone}</Text>
+                              </View>
+                              <Ionicons
+                                name={yaEsta ? 'checkmark-circle' : 'add-circle-outline'}
+                                size={22}
+                                color={yaEsta ? colors.primary : colors.textMuted}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </View>
+                  )}
+
+                  {(chat.members || [userProfile.phone]).map((mPhone) => {
+                    const esYo = mPhone === userProfile.phone;
+                    const cAg = contactosDisponiblesGrupo.find((x) => x.phone === mPhone);
+                    const estM = formatearEstadoConexion(mPhone, usersPresence);
+                    return (
+                      <View
+                        key={mPhone}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingVertical: 7,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>
+                            {esYo ? `${userProfile.name} (Tú)` : cAg?.name || mPhone}
+                          </Text>
+                          <Text
+                            style={{
+                              color: estM.isOnline ? '#10B981' : colors.textMuted,
+                              fontSize: 11,
+                            }}
+                          >
+                            {esYo ? 'en línea • Administrador' : `${estM.shortText} • ${mPhone}`}
+                          </Text>
+                        </View>
+                        {!esYo && onUpdateGroupMembers && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              const actuales = Array.isArray(chat.members) ? chat.members : [];
+                              onUpdateGroupMembers(
+                                chat.id,
+                                actuales.filter((p) => p !== mPhone)
+                              );
+                            }}
+                            style={{ padding: 4 }}
+                          >
+                            <Ionicons name="remove-circle-outline" size={19} color="#EF4444" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
 
               {/* 3 Botones de Acción Rápida estilo WhatsApp / Telegram */}
               {!chat.official && (

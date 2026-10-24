@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, StatusBar,
-  SafeAreaView, Modal, TextInput, Alert, Platform
+  SafeAreaView, Modal, TextInput, Alert, Platform, AppState
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
@@ -16,6 +16,9 @@ import {
   cifrarMensajeE2EE,
   descifrarMensajeE2EE,
   generarHashPin,
+  parsearColorYVistasEstado,
+  serializarColorYVistasEstado,
+  calcularTiempoRestanteEstado,
 } from './lib/seguridad';
 
 import LoginScreen from './screens/LoginScreen';
@@ -72,6 +75,7 @@ function MainApp() {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [statuses, setStatuses] = useState([]);
   const [callHistory, setCallHistory] = useState([]);
+  const [usersPresence, setUsersPresence] = useState({});
 
   // Llamada en curso
   const [activeCall, setActiveCall] = useState(null);
@@ -222,13 +226,40 @@ function MainApp() {
           }
         }
 
-        // Cargar estados de las últimas 24h
+        // Cargar y limpiar estados de más de 24 horas automáticamente
+        const ahoraMs = Date.now();
+        try {
+          await supabase.from('nexchat_statuses').delete().lt('expires_at', ahoraMs);
+        } catch {}
+
         const { data: stData } = await supabase
           .from('nexchat_statuses')
           .select('*')
           .order('created_at', { ascending: false })
           .limit(40);
-        if (stData) setStatuses(stData);
+        if (stData) {
+          setStatuses(stData.filter((s) => !calcularTiempoRestanteEstado(s).expirado));
+        }
+
+        // Cargar presencia de usuarios (en línea / última vez)
+        const { data: usrData } = await supabase
+          .from('nexchat_users')
+          .select('id,phone,name,online,last_seen,bio,avatar')
+          .limit(120);
+        if (usrData) {
+          const mapP = {};
+          usrData.forEach((u) => {
+            const d = String(u.phone || '').replace(/[^0-9]/g, '');
+            if (d) mapP[d] = u;
+          });
+          setUsersPresence(mapP);
+        }
+
+        // Marcar mi propio estado como "en línea" ahora mismo
+        await supabase
+          .from('nexchat_users')
+          .update({ online: true, last_seen: new Date().toISOString() })
+          .eq('phone', userProfile.phone);
 
         // Cargar mensajes donde participe mi número
         if (myCleanDigits.length >= 6) {
@@ -249,6 +280,29 @@ function MainApp() {
     };
 
     cargarDatosNube();
+
+    // Latido de presencia cada 45s y limpieza de estados vencidos de 24h
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await supabase
+          .from('nexchat_users')
+          .update({ online: true, last_seen: new Date().toISOString() })
+          .eq('phone', userProfile.phone);
+        await supabase.from('nexchat_statuses').delete().lt('expires_at', Date.now());
+        setStatuses((prev) => prev.filter((s) => !calcularTiempoRestanteEstado(s).expirado));
+      } catch {}
+    }, 45000);
+
+    // Detectar cuando el usuario minimiza o vuelve a abrir la app para actualizar "en línea" / "últ. vez"
+    const appStateSub = AppState.addEventListener('change', async (nextState) => {
+      try {
+        const isActive = nextState === 'active';
+        await supabase
+          .from('nexchat_users')
+          .update({ online: isActive, last_seen: new Date().toISOString() })
+          .eq('phone', userProfile.phone);
+      } catch {}
+    });
 
     const channel = supabase
       .channel('nexchat_global_realtime')
@@ -311,14 +365,49 @@ function MainApp() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nexchat_statuses' },
         (payload) => {
-          if (payload.new) {
+          if (payload.new && !calcularTiempoRestanteEstado(payload.new).expirado) {
             setStatuses((prev) => [payload.new, ...prev.filter((s) => s.id !== payload.new.id)]);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'nexchat_statuses' },
+        (payload) => {
+          if (payload.new) {
+            setStatuses((prev) =>
+              prev.map((s) => (s.id === payload.new.id ? payload.new : s))
+            );
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'nexchat_statuses' },
+        (payload) => {
+          if (payload.old?.id) {
+            setStatuses((prev) => prev.filter((s) => s.id !== payload.old.id));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'nexchat_users' },
+        (payload) => {
+          const usr = payload.new;
+          if (usr?.phone) {
+            const d = String(usr.phone).replace(/[^0-9]/g, '');
+            if (d) {
+              setUsersPresence((prev) => ({ ...prev, [d]: usr }));
+            }
           }
         }
       )
       .subscribe();
 
     return () => {
+      clearInterval(heartbeatInterval);
+      appStateSub.remove();
       supabase.removeChannel(channel);
     };
   }, [userProfile]);
@@ -435,11 +524,11 @@ function MainApp() {
   };
 
   // 3. Crear nuevo chat 1 a 1 con un amigo real
-  const handleCreateDirectChat = async (peerPhone, customName, peerData) => {
+  const handleCreateDirectChat = async (peerPhone, customName, peerData, keepInModal = false) => {
     const roomId = generarRoomIdPrivado(userProfile.phone, peerPhone);
     const existing = chats.find((c) => c.id === roomId);
     if (existing) {
-      setSelectedChatId(roomId);
+      if (!keepInModal) setSelectedChatId(roomId);
       return;
     }
 
@@ -454,8 +543,14 @@ function MainApp() {
       messages: [],
     };
 
-    setChats((prev) => [nuevoChat, ...prev]);
-    setSelectedChatId(roomId);
+    setChats((prev) => {
+      const updated = [nuevoChat, ...prev];
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+    if (!keepInModal) {
+      setSelectedChatId(roomId);
+    }
 
     try {
       await supabase.from('nexchat_chats').upsert([
@@ -578,9 +673,10 @@ function MainApp() {
     } catch (e) {}
   };
 
-  // 6. Publicar Estado de 24h
+  // 6. Publicar, Ver y Eliminar Estado de 24h
   const handlePublishStatus = async (content, bgColor) => {
     const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const packedBg = serializarColorYVistasEstado(bgColor, []);
     const newSt = {
       id: `st_${Date.now()}`,
       user_id: userProfile.id || userProfile.phone,
@@ -588,7 +684,7 @@ function MainApp() {
       user_name: userProfile.name,
       user_avatar: userProfile.avatar?.startsWith('data:') ? '📸' : (userProfile.avatar || '😎'),
       content: sanitizarEntrada(content),
-      bg_color: bgColor,
+      bg_color: packedBg,
       time: hora,
       expires_at: Date.now() + 86400000,
     };
@@ -597,6 +693,46 @@ function MainApp() {
     try {
       await supabase.from('nexchat_statuses').insert([newSt]);
     } catch (e) {}
+  };
+
+  const handleViewStatus = async (st) => {
+    if (!st || !userProfile?.phone || st.user_phone === userProfile.phone) return;
+    const { color, views } = parsearColorYVistasEstado(st.bg_color);
+    const hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const filtered = views.filter((v) => v.phone !== userProfile.phone);
+    const updatedViews = [
+      { phone: userProfile.phone, name: userProfile.name, time: hora },
+      ...filtered,
+    ];
+    const newBg = serializarColorYVistasEstado(color, updatedViews);
+
+    setStatuses((prev) =>
+      prev.map((item) => (item.id === st.id ? { ...item, bg_color: newBg } : item))
+    );
+
+    try {
+      await supabase
+        .from('nexchat_statuses')
+        .update({ bg_color: newBg })
+        .eq('id', st.id);
+    } catch (e) {}
+  };
+
+  const handleDeleteStatus = async (statusId) => {
+    setStatuses((prev) => prev.filter((s) => s.id !== statusId));
+    try {
+      await supabase.from('nexchat_statuses').delete().eq('id', statusId);
+    } catch (e) {}
+  };
+
+  const handleUpdateGroupMembers = (chatId, newMembers) => {
+    setChats((prev) => {
+      const updated = prev.map((c) =>
+        c.id === chatId ? { ...c, members: newMembers } : c
+      );
+      AsyncStorage.setItem('@nexchat_chats_v3', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
   };
 
   // 7. Iniciar llamada de voz o video
@@ -823,12 +959,15 @@ function MainApp() {
         <ChatDetalleScreen
           chat={selectedChat}
           userProfile={userProfile}
+          usersPresence={usersPresence}
+          allChats={chats}
           onBack={() => setSelectedChatId(null)}
           onSendMessage={handleSendMessage}
           onStartCall={handleStartCall}
           onDeleteMessageForMe={handleDeleteMessageForMe}
           onDeleteMessageForAll={handleDeleteMessageForAll}
           onEditContactName={handleEditContactName}
+          onUpdateGroupMembers={handleUpdateGroupMembers}
           onClearChat={handleClearChat}
           onDeleteChat={handleDeleteChat}
         />
@@ -883,6 +1022,7 @@ function MainApp() {
               <ChatsScreen
                 chats={chats}
                 userProfile={userProfile}
+                usersPresence={usersPresence}
                 onSelectChat={(chat) => {
                   setChats((prev) =>
                     prev.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c))
@@ -901,6 +1041,8 @@ function MainApp() {
                 statuses={statuses}
                 userProfile={userProfile}
                 onPublishStatus={handlePublishStatus}
+                onDeleteStatus={handleDeleteStatus}
+                onViewStatus={handleViewStatus}
               />
             )}
 
