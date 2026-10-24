@@ -51,6 +51,7 @@ export default function ChatsScreen({
   const [telefonoAmigo, setTelefonoAmigo] = useState('');
   const [buscandoAmigo, setBuscandoAmigo] = useState(false);
   const [usuarioEncontradoLive, setUsuarioEncontradoLive] = useState(null);
+  const [verificacionTerminada, setVerificacionTerminada] = useState(false);
 
   // Estado para Crear Nuevo Grupo
   const [nombreGrupo, setNombreGrupo] = useState('');
@@ -86,8 +87,10 @@ export default function ChatsScreen({
     const limpio = telefonoAmigo.replace(/[^0-9]/g, '');
     if (limpio.length < 6) {
       setUsuarioEncontradoLive(null);
+      setVerificacionTerminada(false);
       return;
     }
+    setVerificacionTerminada(false);
     const timer = setTimeout(async () => {
       try {
         const numCompleto = `${paisSeleccionado.code} ${limpio}`;
@@ -100,6 +103,8 @@ export default function ChatsScreen({
         setUsuarioEncontradoLive(data || null);
       } catch {
         setUsuarioEncontradoLive(null);
+      } finally {
+        setVerificacionTerminada(true);
       }
     }, 350);
     return () => clearTimeout(timer);
@@ -136,24 +141,36 @@ export default function ChatsScreen({
     let peerData = usuarioEncontradoLive;
     if (!peerData) {
       try {
+        const soloNum = soloDigitos.replace(/[^0-9]/g, '');
         const { data } = await supabase
           .from('nexchat_users')
           .select('*')
-          .eq('phone', numeroCompleto)
+          .or(`phone.eq.${numeroCompleto},phone.ilike.%${soloNum}%`)
+          .limit(1)
           .maybeSingle();
         if (data) peerData = data;
       } catch {}
     }
     setBuscandoAmigo(false);
 
+    // Bloquear si la persona NO tiene cuenta registrada en NexChat
+    if (!peerData) {
+      Alert.alert(
+        '⚠️ No tiene cuenta en NexChat',
+        `El número ${numeroCompleto} no está registrado en NexChat Global.\n\nNo se le puede escribir hasta que descargue la aplicación y cree su cuenta.`
+      );
+      return;
+    }
+
     const nombreCompuesto = [nombreAmigo.trim(), apellidoAmigo.trim()].filter(Boolean).join(' ');
-    const nombreFinal = nombreCompuesto || peerData?.name || numeroCompleto;
-    onCreateDirectChat(peerData?.phone || numeroCompleto, nombreFinal, peerData);
+    const nombreFinal = nombreCompuesto || peerData.name || numeroCompleto;
+    onCreateDirectChat(peerData.phone, nombreFinal, peerData);
 
     setTelefonoAmigo('');
     setNombreAmigo('');
     setApellidoAmigo('');
     setUsuarioEncontradoLive(null);
+    setVerificacionTerminada(false);
     setVistaModal(null);
   }
 
@@ -566,13 +583,13 @@ export default function ChatsScreen({
                   </View>
                 </View>
 
-                {/* Tarjeta en vivo si el número ya está en NexChat */}
-                {usuarioEncontradoLive && (
+                {/* Tarjeta en vivo si el número ya está en NexChat o aviso si NO tiene cuenta */}
+                {usuarioEncontradoLive ? (
                   <View style={[styles.liveMatchBox, { borderColor: colors.primary }]}>
                     {renderAvatar(usuarioEncontradoLive.avatar, false, 44)}
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '900' }}>
-                        ✅ Este número está en NexChat
+                        ✅ Esta persona tiene cuenta en NexChat
                       </Text>
                       <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
                         {usuarioEncontradoLive.name}
@@ -582,15 +599,54 @@ export default function ChatsScreen({
                       </Text>
                     </View>
                   </View>
-                )}
+                ) : verificacionTerminada && telefonoAmigo.replace(/[^0-9]/g, '').length >= 6 ? (
+                  <View
+                    style={[
+                      styles.liveMatchBox,
+                      {
+                        borderColor: '#EF4444',
+                        backgroundColor: 'rgba(239,68,68,0.12)',
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 26 }}>🚫</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '900' }}>
+                        Esta persona no tiene NexChat
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2, lineHeight: 16 }}>
+                        El número {paisSeleccionado.code} {telefonoAmigo.trim()} no tiene cuenta registrada. No se le puede escribir hasta que cree su cuenta.
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
 
                 <TouchableOpacity
                   onPress={handleGuardarContacto}
                   disabled={buscandoAmigo}
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        verificacionTerminada && !usuarioEncontradoLive && telefonoAmigo.replace(/[^0-9]/g, '').length >= 6
+                          ? '#475569'
+                          : colors.primary,
+                    },
+                  ]}
                 >
-                  <Text style={styles.submitBtnText}>
-                    {buscandoAmigo ? 'Guardando...' : '💾 Guardar Contacto y Chatear'}
+                  <Text
+                    style={[
+                      styles.submitBtnText,
+                      verificacionTerminada && !usuarioEncontradoLive && telefonoAmigo.replace(/[^0-9]/g, '').length >= 6 && {
+                        color: '#E2E8F0',
+                      },
+                    ]}
+                  >
+                    {buscandoAmigo
+                      ? 'Verificando cuenta en NexChat...'
+                      : verificacionTerminada && !usuarioEncontradoLive && telefonoAmigo.replace(/[^0-9]/g, '').length >= 6
+                      ? '🚫 Sin cuenta en NexChat (No se puede escribir)'
+                      : '💬 Guardar Contacto y Chatear'}
                   </Text>
                 </TouchableOpacity>
               </View>
