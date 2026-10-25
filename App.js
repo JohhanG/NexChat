@@ -66,6 +66,14 @@ const CANAL_OFICIAL_INICIAL = [
   },
 ];
 
+const phonesMatch = (p1, p2) => {
+  if (!p1 || !p2) return false;
+  const d1 = String(p1).replace(/[^0-9]/g, '');
+  const d2 = String(p2).replace(/[^0-9]/g, '');
+  if (!d1 || !d2) return false;
+  return d1 === d2 || (d1.length >= 7 && d2.length >= 7 && (d1.endsWith(d2) || d2.endsWith(d1)));
+};
+
 function MainApp() {
   const { colors, isDark, toggleTheme } = useTheme();
   const [userProfile, setUserProfile] = useState(null);
@@ -78,14 +86,23 @@ function MainApp() {
   const [callHistory, setCallHistory] = useState([]);
   const [usersPresence, setUsersPresence] = useState({});
 
-  // Llamada en curso
+  // Llamadas en tiempo real (Entrante, Saliente y Activa)
   const [activeCall, setActiveCall] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [outgoingCall, setOutgoingCall] = useState(null);
   const [callSeconds, setCallSeconds] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
+
+  const activeCallRef = useRef(activeCall);
+  const outgoingCallRef = useRef(outgoingCall);
+  const incomingCallRef = useRef(incomingCall);
+  useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
+  useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
+  useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
   // Bloqueo de pantalla por PIN
   const [isLocked, setIsLocked] = useState(false);
@@ -275,8 +292,8 @@ function MainApp() {
   // Navegación con gesto/botón de volver atrás de Android (evita que se salga de la app)
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (activeCall) {
-        setActiveCall(null);
+      if (activeCall || outgoingCall || incomingCall) {
+        handleEndCall();
         return true;
       }
       if (selectedChatId) {
@@ -290,7 +307,7 @@ function MainApp() {
       return false;
     });
     return () => sub.remove();
-  }, [activeCall, selectedChatId, activeTab]);
+  }, [activeCall, outgoingCall, incomingCall, selectedChatId, activeTab]);
 
   // Cronómetro de llamada activa
   useEffect(() => {
@@ -309,6 +326,22 @@ function MainApp() {
     }
     return () => clearInterval(timer);
   }, [activeCall]);
+
+  // Temporizador para llamada saliente (cancela automáticamente a los 40s si no responden)
+  useEffect(() => {
+    let timer;
+    if (outgoingCall) {
+      let count = 0;
+      timer = setInterval(() => {
+        count += 1;
+        if (count >= 40) {
+          handleEndCall();
+          Alert.alert('Sin respuesta', 'El contacto no respondió a la llamada.');
+        }
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [outgoingCall]);
 
   // 2. Sincronizar con Supabase 24/7 (Mensajes y Estados en Tiempo Real)
   useEffect(() => {
@@ -502,6 +535,46 @@ function MainApp() {
           setStatuses((prev) =>
             prev.map((s) => (s.id === payload.id ? { ...s, bg_color: payload.bg_color } : s))
           );
+        }
+      })
+      .on('broadcast', { event: 'fast_call_offer' }, async ({ payload }) => {
+        if (!payload || !userProfile?.phone) return;
+        if (phonesMatch(payload.receiverPhone, userProfile.phone) && !phonesMatch(payload.callerPhone, userProfile.phone)) {
+          setIncomingCall(payload);
+          try {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: `📞 Llamada de ${payload.callerName || payload.callerPhone}`,
+                body: payload.type === 'video' ? '📹 Videollamada entrante en NexChat' : '📞 Llamada de voz entrante',
+                sound: true,
+              },
+              trigger: null,
+            });
+          } catch {}
+        }
+      })
+      .on('broadcast', { event: 'fast_call_answer' }, ({ payload }) => {
+        if (!payload || !userProfile?.phone) return;
+        if (phonesMatch(payload.callerPhone, userProfile.phone)) {
+          setOutgoingCall(null);
+          setActiveCall({
+            id: payload.callId,
+            name: payload.receiverName || payload.receiverPhone,
+            peerPhone: payload.receiverPhone,
+            avatar: payload.receiverAvatar || '👤',
+            type: payload.type || 'audio',
+            status: 'connected',
+          });
+        }
+      })
+      .on('broadcast', { event: 'fast_call_end' }, ({ payload }) => {
+        if (!payload || !userProfile?.phone) return;
+        if (phonesMatch(payload.callerPhone, userProfile.phone) || phonesMatch(payload.receiverPhone, userProfile.phone)) {
+          setIncomingCall(null);
+          setOutgoingCall(null);
+          setActiveCall(null);
+          setIsSharingScreen(false);
+          setIsCameraOn(false);
         }
       })
       .on(
@@ -1088,20 +1161,158 @@ function MainApp() {
     });
   };
 
-  // 7. Iniciar llamada de voz o video
+  // 7. Sistema de llamadas en tiempo real E2EE (Iniciar, Contestar, Rechazar, Finalizar)
   const handleStartCall = (chatObj, type = 'audio') => {
-    const registro = {
-      id: `call_${Date.now()}`,
-      name: chatObj.name,
-      avatar: chatObj.avatar || '👤',
-      peerPhone: chatObj.peerPhone,
+    if (!userProfile?.phone || !chatObj) return;
+    let peerPhone = chatObj.peerPhone || chatObj.phone;
+    if (!peerPhone && chatObj.id && String(chatObj.id).startsWith('dm_')) {
+      peerPhone = extraerPeerPhoneDeRoom(chatObj.id, userProfile.phone);
+    }
+    if (!peerPhone) {
+      Alert.alert('Sin número', 'Este contacto no tiene un teléfono asociado para llamar.');
+      return;
+    }
+
+    const peerDigits = String(peerPhone).replace(/[^0-9]/g, '');
+    const peerPresence = usersPresence[peerDigits] || Object.values(usersPresence).find(u => u?.phone && phonesMatch(u.phone, peerPhone));
+    const peerName = (chatObj.name && !chatObj.name.startsWith('dm_')) ? chatObj.name : (peerPresence?.name || peerPhone);
+    const peerAvatar = chatObj.avatar || peerPresence?.avatar || '👤';
+
+    const callId = `call_${Date.now()}`;
+    const callOffer = {
+      callId,
+      callerPhone: userProfile.phone,
+      callerName: userProfile.name || userProfile.phone,
+      callerAvatar: userProfile.avatar || '👤',
+      receiverPhone: peerPhone,
+      receiverName: peerName,
+      receiverAvatar: peerAvatar,
       type,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const registro = {
+      id: callId,
+      name: peerName,
+      avatar: peerAvatar,
+      peerPhone: peerPhone,
+      type,
+      time: callOffer.time,
     };
     const nuevaLista = [registro, ...callHistory];
     setCallHistory(nuevaLista);
     AsyncStorage.setItem('@nexchat_calls_v3', JSON.stringify(nuevaLista)).catch(() => {});
-    setActiveCall({ ...chatObj, type });
+
+    setOutgoingCall(callOffer);
+
+    if (realtimeChannelRef.current) {
+      realtimeChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'fast_call_offer',
+          payload: callOffer,
+        })
+        .catch(() => {});
+    }
+  };
+
+  const handleAnswerCall = () => {
+    const inc = incomingCallRef.current || incomingCall;
+    if (!inc) return;
+    const answeredPayload = {
+      callId: inc.callId,
+      callerPhone: inc.callerPhone,
+      receiverPhone: userProfile.phone,
+      receiverName: userProfile.name || userProfile.phone,
+      receiverAvatar: userProfile.avatar || '👤',
+      type: inc.type,
+    };
+
+    if (realtimeChannelRef.current) {
+      realtimeChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'fast_call_answer',
+          payload: answeredPayload,
+        })
+        .catch(() => {});
+    }
+
+    const registro = {
+      id: inc.callId,
+      name: inc.callerName || inc.callerPhone,
+      avatar: inc.callerAvatar || '👤',
+      peerPhone: inc.callerPhone,
+      type: inc.type,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setCallHistory((prev) => {
+      const nextList = [registro, ...prev];
+      AsyncStorage.setItem('@nexchat_calls_v3', JSON.stringify(nextList)).catch(() => {});
+      return nextList;
+    });
+
+    setActiveCall({
+      id: inc.callId,
+      name: inc.callerName || inc.callerPhone,
+      peerPhone: inc.callerPhone,
+      avatar: inc.callerAvatar || '👤',
+      type: inc.type,
+      status: 'connected',
+    });
+    setIncomingCall(null);
+  };
+
+  const handleRejectCall = () => {
+    const inc = incomingCallRef.current || incomingCall;
+    if (!inc) return;
+    const endPayload = {
+      callId: inc.callId,
+      callerPhone: inc.callerPhone,
+      receiverPhone: userProfile.phone,
+      reason: 'rejected',
+    };
+    if (realtimeChannelRef.current) {
+      realtimeChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'fast_call_end',
+          payload: endPayload,
+        })
+        .catch(() => {});
+    }
+    setIncomingCall(null);
+  };
+
+  const handleEndCall = () => {
+    const act = activeCallRef.current || activeCall;
+    const out = outgoingCallRef.current || outgoingCall;
+    const inc = incomingCallRef.current || incomingCall;
+    const peerPhone = act?.peerPhone || out?.receiverPhone || inc?.callerPhone;
+    const callId = act?.id || out?.callId || inc?.callId;
+    if (realtimeChannelRef.current && peerPhone) {
+      realtimeChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'fast_call_end',
+          payload: {
+            callId,
+            callerPhone: userProfile.phone,
+            receiverPhone: peerPhone,
+            reason: 'hangup',
+          },
+        })
+        .catch(() => {});
+    }
+    setActiveCall(null);
+    setOutgoingCall(null);
+    setIncomingCall(null);
+    setIsSharingScreen(false);
+    setIsCameraOn(false);
+  };
+    setIncomingCall(null);
+    setIsSharingScreen(false);
+    setIsCameraOn(false);
   };
 
   // 8. Actualizar perfil
@@ -1487,6 +1698,104 @@ function MainApp() {
         </>
       )}
 
+      {/* MODAL DE LLAMADA ENTRANTE EN TIEMPO REAL */}
+      <Modal visible={!!incomingCall} animationType="fade" transparent>
+        {incomingCall && (
+          <View style={styles.incomingModalOverlay}>
+            <View style={styles.incomingCard}>
+              <View style={styles.incomingBadge}>
+                <Ionicons name="shield-checkmark" size={14} color="#00A884" />
+                <Text style={styles.incomingBadgeText}>Cifrado de Extremo a Extremo</Text>
+              </View>
+
+              <View style={styles.incomingAvatarRing}>
+                {incomingCall.callerAvatar && (incomingCall.callerAvatar.startsWith('http') || incomingCall.callerAvatar.startsWith('data:')) ? (
+                  <Image source={{ uri: incomingCall.callerAvatar }} style={styles.incomingAvatarImg} />
+                ) : (
+                  <Text style={{ fontSize: 48 }}>{incomingCall.callerAvatar || '👤'}</Text>
+                )}
+              </View>
+
+              <Text style={styles.incomingCallerName} numberOfLines={1}>
+                {incomingCall.callerName || incomingCall.callerPhone}
+              </Text>
+              <Text style={styles.incomingCallerPhone}>
+                {incomingCall.callerPhone}
+              </Text>
+              <Text style={styles.incomingCallTypeNotice}>
+                {incomingCall.type === 'video' ? '📹 Videollamada entrante de NexChat' : '📞 Llamada de voz entrante...'}
+              </Text>
+
+              <View style={styles.incomingActionsRow}>
+                {/* Botón Rechazar */}
+                <TouchableOpacity
+                  style={[styles.callCircleBtn, { backgroundColor: '#EF4444' }]}
+                  onPress={handleRejectCall}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="call" size={28} color="#FFFFFF" style={{ transform: [{ rotate: '135deg' }] }} />
+                  <Text style={styles.callCircleBtnText}>Rechazar</Text>
+                </TouchableOpacity>
+
+                {/* Botón Contestar */}
+                <TouchableOpacity
+                  style={[styles.callCircleBtn, { backgroundColor: '#22C55E' }]}
+                  onPress={handleAnswerCall}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="call" size={28} color="#FFFFFF" />
+                  <Text style={styles.callCircleBtnText}>Contestar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+      {/* MODAL DE LLAMADA SALIENTE ("TIMBRANDO EN EL OTRO CELULAR...") */}
+      <Modal visible={!!outgoingCall} animationType="fade" transparent>
+        {outgoingCall && (
+          <View style={styles.incomingModalOverlay}>
+            <View style={styles.incomingCard}>
+              <View style={styles.incomingBadge}>
+                <Ionicons name="shield-checkmark" size={14} color="#00A884" />
+                <Text style={styles.incomingBadgeText}>Cifrado de Extremo a Extremo</Text>
+              </View>
+
+              <View style={styles.incomingAvatarRing}>
+                {outgoingCall.receiverAvatar && (outgoingCall.receiverAvatar.startsWith('http') || outgoingCall.receiverAvatar.startsWith('data:')) ? (
+                  <Image source={{ uri: outgoingCall.receiverAvatar }} style={styles.incomingAvatarImg} />
+                ) : (
+                  <Text style={{ fontSize: 48 }}>{outgoingCall.receiverAvatar || '👤'}</Text>
+                )}
+              </View>
+
+              <Text style={styles.incomingCallerName} numberOfLines={1}>
+                {outgoingCall.receiverName || outgoingCall.receiverPhone}
+              </Text>
+              <Text style={styles.incomingCallerPhone}>
+                {outgoingCall.receiverPhone}
+              </Text>
+              <View style={styles.ringingPill}>
+                <Ionicons name="radio-outline" size={16} color="#00A884" />
+                <Text style={styles.ringingText}>Timbrando en el otro celular...</Text>
+              </View>
+
+              <View style={{ marginTop: 28, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={[styles.callCircleBtn, { backgroundColor: '#EF4444', width: 70, height: 70 }]}
+                  onPress={handleEndCall}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="call" size={30} color="#FFFFFF" style={{ transform: [{ rotate: '135deg' }] }} />
+                  <Text style={styles.callCircleBtnText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
       {/* MODAL DE LLAMADA EN VIVO MEJORADO */}
       <Modal visible={!!activeCall} animationType="slide" transparent>
         {activeCall && (
@@ -1672,15 +1981,11 @@ function MainApp() {
 
               {/* BOTÓN COLGAR DESTACADO */}
               <TouchableOpacity
-                onPress={() => {
-                  setActiveCall(null);
-                  setIsSharingScreen(false);
-                  setIsCameraOn(false);
-                }}
+                onPress={handleEndCall}
                 style={styles.callHangUpBtn}
                 activeOpacity={0.8}
               >
-                <Text style={{ fontSize: 28 }}>📵</Text>
+                <Ionicons name="call" size={24} color="#FFFFFF" style={{ transform: [{ rotate: '135deg' }] }} />
                 <Text style={styles.callHangUpText}>Finalizar Llamada</Text>
               </TouchableOpacity>
             </View>
@@ -2221,5 +2526,129 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderRadius: 14,
     alignItems: 'center',
+  },
+  incomingModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.94)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  incomingCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#0F172A',
+    borderRadius: 28,
+    borderWidth: 1.5,
+    borderColor: 'rgba(16,185,129,0.3)',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  incomingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(16,185,129,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.25)',
+  },
+  incomingBadgeText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  incomingAvatarRing: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#064E3B',
+    borderWidth: 3,
+    borderColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  incomingAvatarImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  incomingCallerName: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  incomingCallerPhone: {
+    color: '#94A3B8',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  incomingCallTypeNotice: {
+    color: '#6EE7B7',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  incomingActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  callCircleBtn: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+  },
+  callCircleBtnText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  ringingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.3)',
+  },
+  ringingText: {
+    color: '#34D399',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });
