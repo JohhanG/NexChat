@@ -197,7 +197,7 @@ export default function ChatDetalleScreen({
           const base64Data = msg.mediaUri.split(',')[1] || msg.mediaUri;
           const tempPath = `${FileSystem.cacheDirectory}audio_${msg.id || Date.now()}.m4a`;
           await FileSystem.writeAsStringAsync(tempPath, base64Data, {
-            encoding: FileSystem.EncodingType.Base64,
+            encoding: (FileSystem && FileSystem.EncodingType && FileSystem.EncodingType.Base64) ? FileSystem.EncodingType.Base64 : 'base64',
           });
           playbackUri = tempPath;
         }
@@ -409,7 +409,7 @@ export default function ChatDetalleScreen({
           recordingInstanceRef.current = null;
           if (uri) {
             const b64 = await FileSystem.readAsStringAsync(uri, {
-              encoding: FileSystem.EncodingType.Base64,
+              encoding: (FileSystem && FileSystem.EncodingType && FileSystem.EncodingType.Base64) ? FileSystem.EncodingType.Base64 : 'base64',
             });
             const audioDataUri = `data:audio/m4a;base64,${b64}`;
             onSendMessage({
