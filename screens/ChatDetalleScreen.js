@@ -6,7 +6,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
