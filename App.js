@@ -1069,7 +1069,7 @@ function MainApp() {
   };
 
   // 5. Enviar mensaje en chat activo (o enviar comunicado global si es en NexChat Oficial como Admin)
-  const handleSendMessage = async ({ text, mediaUri, mediaType, ephemeral }) => {
+  const handleSendMessage = async (payload, extraParam) => {
     if (!selectedChatId) return;
     const targetRoomId = selectedChatId;
     if (clearedChatsRef.current[targetRoomId]) {
@@ -1077,7 +1077,26 @@ function MainApp() {
       persistClearedChats(clearedChatsRef.current);
     }
 
-    const cleanText = sanitizarEntrada(text);
+    // Extraer campos soportando tanto ({ text, mediaUri, ... }) como (chatId, texto) o (texto)
+    let rawText = '';
+    let mediaUri = null;
+    let mediaType = 'text';
+    let ephemeral = false;
+
+    if (typeof payload === 'string') {
+      if (typeof extraParam === 'string') {
+        rawText = extraParam;
+      } else {
+        rawText = payload;
+      }
+    } else if (payload && typeof payload === 'object') {
+      rawText = payload.text || '';
+      mediaUri = payload.mediaUri || null;
+      mediaType = payload.mediaType || 'text';
+      ephemeral = Boolean(payload.ephemeral);
+    }
+
+    const cleanText = sanitizarEntrada(rawText);
     const esCanalOficial = targetRoomId === 'official_nexchat';
     const msgId = esCanalOficial
       ? `official_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`

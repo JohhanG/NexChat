@@ -171,7 +171,14 @@ export default function ChatDetalleScreen({
       lineas.push(`⏰ *Acuerdos / Horarios:* ${resumenData.acuerdos.join(' • ')}`);
     }
     const textoResumen = lineas.join('\n');
-    if (onSendMessage) onSendMessage(chat.id, textoResumen);
+    if (onSendMessage) {
+      onSendMessage({
+        text: textoResumen,
+        mediaUri: null,
+        mediaType: 'text',
+        ephemeral: false,
+      });
+    }
     setShowAiModal(false);
   };
 
@@ -1099,7 +1106,14 @@ export default function ChatDetalleScreen({
                 <TouchableOpacity
                   key={idx}
                   onPress={() => {
-                    if (onSendMessage) onSendMessage(chat.id, frase);
+                    if (onSendMessage) {
+                      onSendMessage({
+                        text: frase,
+                        mediaUri: null,
+                        mediaType: 'text',
+                        ephemeral: ephemeralMode,
+                      });
+                    }
                   }}
                   style={[styles.walkQuickChip, { backgroundColor: colors.card, borderColor: colors.border }]}
                 >
