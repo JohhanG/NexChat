@@ -205,6 +205,8 @@ export default function ChatDetalleScreen({
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
         });
         const { sound } = await Audio.Sound.createAsync(
           { uri: playbackUri },
@@ -224,6 +226,7 @@ export default function ChatDetalleScreen({
         });
         return;
       } catch (err) {
+        console.log('Error reproduciendo audio expo-av:', err);
         // Fallback a Speech si hubo error de códec
       }
     }
@@ -231,11 +234,16 @@ export default function ChatDetalleScreen({
     // 2. Fallback a Speech para notas de texto a voz
     let textoParaHablar = '';
     if (msg.mediaUri && String(msg.mediaUri).startsWith('VOICE::')) {
-      textoParaHablar = String(msg.mediaUri).replace('VOICE::', '');
+      const rawVoice = String(msg.mediaUri).replace('VOICE::', '').trim();
+      if (rawVoice.toLowerCase().startsWith('mensaje de voz de') || rawVoice.toLowerCase().startsWith('nota de voz de')) {
+        textoParaHablar = 'Nota de voz anterior enviada sin micrófono.';
+      } else {
+        textoParaHablar = rawVoice;
+      }
     } else if (msg.text && !msg.text.startsWith('🎤 Nota de voz')) {
       textoParaHablar = msg.text.replace(/^🎤\s*/, '').replace(/\(\d+s\)$/, '').trim();
     } else {
-      textoParaHablar = 'Nota de voz de audio.';
+      textoParaHablar = 'Nota de voz de audio recibida.';
     }
 
     try {
@@ -353,17 +361,41 @@ export default function ChatDetalleScreen({
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
         });
-        const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.LOW_QUALITY
-        );
+
+        // Configuración AAC M4A mono 100% compatible con todos los dispositivos Android y iOS
+        const recordingOptions = {
+          android: {
+            extension: '.m4a',
+            outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+            audioEncoder: Audio.AndroidAudioEncoder.AAC,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 64000,
+          },
+          ios: {
+            extension: '.m4a',
+            outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+            audioQuality: Audio.IOSAudioQuality.MEDIUM,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 64000,
+          },
+          web: {
+            mimeType: 'audio/webm',
+            bitsPerSecond: 64000,
+          },
+        };
+
+        const { recording } = await Audio.Recording.createAsync(recordingOptions);
         recordingInstanceRef.current = recording;
         setRecordingAudio(true);
         setRecordSeconds(0);
       } catch (e) {
-        // Fallback
-        setRecordingAudio(true);
-        setRecordSeconds(0);
+        console.log('Error iniciando grabación:', e);
+        Alert.alert('Micrófono', 'No se pudo iniciar la grabación: ' + (e?.message || e));
       }
     } else {
       // Detener grabación y enviar audio real M4A en base64
@@ -390,19 +422,23 @@ export default function ChatDetalleScreen({
             return;
           }
         } catch (err) {
+          console.log('Error al detener grabación:', err);
           recordingInstanceRef.current = null;
+          Alert.alert('Error', 'No se pudo procesar la nota de voz: ' + (err?.message || err));
+          return;
         }
       }
 
-      // Fallback si no hubo stream de micrófono directo
-      const audioContent = text.trim() || `Mensaje de voz de ${userProfile.name || userProfile.phone || 'NexChat'}`;
-      onSendMessage({
-        text: text.trim() ? `🎤 "${text.trim()}" (${dur}s)` : `🎤 Nota de voz (${dur}s)`,
-        mediaUri: `VOICE::${audioContent}`,
-        mediaType: 'audio',
-        ephemeral: ephemeralMode,
-      });
-      setText('');
+      // Si había texto escrito en la barra, enviarlo como nota
+      if (text.trim()) {
+        onSendMessage({
+          text: `🎤 "${text.trim()}" (${dur}s)`,
+          mediaUri: `VOICE::${text.trim()}`,
+          mediaType: 'audio',
+          ephemeral: ephemeralMode,
+        });
+        setText('');
+      }
     }
   };
 
