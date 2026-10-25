@@ -63,6 +63,8 @@ export default function ChatDetalleScreen({
   onUpdateGroupMembers,
   onClearChat,
   onDeleteChat,
+  isArchived = false,
+  onToggleArchiveChat,
 }) {
   const { colors } = useTheme();
   const [text, setText] = useState('');
@@ -1379,9 +1381,22 @@ export default function ChatDetalleScreen({
                 </View>
               </View>
 
-              {/* Acciones de Limpieza / Eliminación */}
+              {/* Acciones de Limpieza / Eliminación y Archivar */}
               {!chat.official && (
-                <View style={styles.dangerActionsRow}>
+                <View style={[styles.dangerActionsRow, { flexWrap: 'wrap' }]}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (onToggleArchiveChat) onToggleArchiveChat(chat.id);
+                      setInfoModal(false);
+                    }}
+                    style={[styles.sheetActionBtn, { backgroundColor: isArchived ? 'rgba(0,168,132,0.15)' : colors.inputBg, borderColor: isArchived ? '#00A884' : colors.border }]}
+                  >
+                    <Ionicons name={isArchived ? "archive" : "archive-outline"} size={17} color={isArchived ? "#00A884" : colors.text} />
+                    <Text style={{ color: isArchived ? "#00A884" : colors.text, fontSize: 13, fontWeight: '800' }}>
+                      {isArchived ? 'Desarchivar' : 'Archivar'}
+                    </Text>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     onPress={() => {
                       if (onClearChat) onClearChat(chat.id);
@@ -1401,7 +1416,7 @@ export default function ChatDetalleScreen({
                     style={[styles.sheetActionBtn, { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.4)' }]}
                   >
                     <Ionicons name="trash-outline" size={17} color="#EF4444" />
-                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '800' }}>Eliminar contacto</Text>
+                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '800' }}>Eliminar</Text>
                   </TouchableOpacity>
                 </View>
               )}

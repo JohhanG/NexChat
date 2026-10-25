@@ -34,6 +34,8 @@ export default function ChatsScreen({
   chats = [],
   userProfile,
   usersPresence = {},
+  archivedChatIds = new Set(),
+  onToggleArchiveChat,
   onSelectChat,
   onCreateDirectChat,
   onCreateGroupChat,
@@ -44,6 +46,7 @@ export default function ChatsScreen({
   const { colors } = useTheme();
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState('all'); // 'all' | 'unread' | 'groups'
+  const [verArchivados, setVerArchivados] = useState(false);
   const [chatEditando, setChatEditando] = useState(null);
   const [nuevoNombreEditado, setNuevoNombreEditado] = useState('');
 
@@ -75,9 +78,12 @@ export default function ChatsScreen({
   const [busquedaMiembroGrupo, setBusquedaMiembroGrupo] = useState('');
 
   const listaSegura = Array.isArray(chats) ? chats : [];
+  const chatsArchivados = listaSegura.filter((c) => c && archivedChatIds.has(c.id));
+  const chatsActivos = listaSegura.filter((c) => c && !archivedChatIds.has(c.id));
   const totalSinLeer = listaSegura.reduce((acc, c) => acc + (Number(c?.unread) || 0), 0);
 
-  const chatsFiltrados = listaSegura.filter((c) => {
+  const baseParaFiltrar = verArchivados ? chatsArchivados : chatsActivos;
+  const chatsFiltrados = baseParaFiltrar.filter((c) => {
     if (!c) return false;
     if (filtro === 'unread' && (!c.unread || c.unread <= 0)) return false;
     if (filtro === 'groups' && !c.isGroup) return false;
@@ -523,11 +529,52 @@ export default function ChatsScreen({
         </View>
       </View>
 
+      {/* ENCABEZADO CUANDO SE ESTÁ VIENDO LA CARPETA DE ARCHIVADOS */}
+      {verArchivados && (
+        <View style={[styles.archivedHeaderBanner, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => setVerArchivados(false)} style={styles.archivedBackBtn}>
+            <Ionicons name="arrow-back" size={20} color={colors.primary} />
+            <Text style={[styles.archivedBackText, { color: colors.primary }]}>Volver a Chats</Text>
+          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <Ionicons name="archive" size={20} color={colors.primary} />
+            <Text style={[styles.archivedHeaderTitle, { color: colors.text }]}>Chats Archivados ({chatsArchivados.length})</Text>
+          </View>
+          <Text style={[styles.archivedHeaderSub, { color: colors.textMuted }]}>
+            Estas conversaciones se mantienen ocultas de tu bandeja principal
+          </Text>
+        </View>
+      )}
+
       {/* Lista de Conversaciones con Estado de Conexión en Vivo */}
       <FlatList
         data={chatsFiltrados}
         keyExtractor={(item, idx) => item.id || String(idx)}
         contentContainerStyle={{ paddingBottom: 100 }}
+        ListHeaderComponent={
+          !verArchivados && chatsArchivados.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setVerArchivados(true)}
+              style={[styles.archivedBannerBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              activeOpacity={0.7}
+            >
+              <View style={styles.archivedIconCircle}>
+                <Ionicons name="archive" size={18} color="#00A884" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.archivedBannerTitle, { color: colors.text }]}>Archivados</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                  Toca para ver tus conversaciones guardadas
+                </Text>
+              </View>
+              <View style={[styles.archivedBadgePill, { backgroundColor: colors.inputBg }]}>
+                <Text style={[styles.archivedBadgeText, { color: colors.primary }]}>
+                  {chatsArchivados.length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : null
+        }
         renderItem={({ item }) => {
           const msgs = Array.isArray(item.messages) ? item.messages : [];
           const ultimo = msgs[msgs.length - 1];
@@ -769,6 +816,53 @@ export default function ChatsScreen({
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* 1.5. Archivar o Desarchivar Chat */}
+            <TouchableOpacity
+              onPress={() => {
+                if (chatEditando && onToggleArchiveChat) {
+                  onToggleArchiveChat(chatEditando.id);
+                  setChatEditando(null);
+                }
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: colors.inputBg,
+                marginBottom: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: 'rgba(0,168,132,0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name={archivedChatIds.has(chatEditando?.id) ? 'arrow-up-circle-outline' : 'archive-outline'}
+                  size={19}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
+                  {archivedChatIds.has(chatEditando?.id) ? 'Desarchivar chat' : 'Archivar chat'}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                  {archivedChatIds.has(chatEditando?.id)
+                    ? 'Regresar a la lista principal de conversaciones'
+                    : 'Ocultar conversación en la carpeta de archivados'}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
             {/* 2. Vaciar Chat (Solo para mí) */}
             <TouchableOpacity
@@ -1801,5 +1895,61 @@ const styles = StyleSheet.create({
   countryListCode: {
     fontSize: 15,
     fontWeight: '900',
+  },
+  archivedBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+  },
+  archivedIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  archivedBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  archivedBadgePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  archivedBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  archivedHeaderBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  archivedBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  archivedBackText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  archivedHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  archivedHeaderSub: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

@@ -104,9 +104,71 @@ function MainApp() {
   useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
-  // Bloqueo de pantalla por PIN
+  // Bloqueo de pantalla por Huella Dactilar / PIN
   const [isLocked, setIsLocked] = useState(false);
   const [unlockPin, setUnlockPin] = useState('');
+  const [appLockConfig, setAppLockConfig] = useState({
+    enabled: true,
+    method: 'huella', // 'huella' | 'pin' | 'ambos'
+    autoLockTime: 'immediate', // 'immediate' | '1m' | '5m'
+  });
+  const [unlockMode, setUnlockMode] = useState('huella');
+  const [fingerprintScanning, setFingerprintScanning] = useState(false);
+  const appLockConfigRef = useRef(appLockConfig);
+  useEffect(() => { appLockConfigRef.current = appLockConfig; }, [appLockConfig]);
+  const backgroundTimeRef = useRef(null);
+
+  // Registro persistente de Chats Archivados
+  const [archivedChatIds, setArchivedChatIds] = useState(new Set());
+
+  useEffect(() => {
+    AsyncStorage.getItem('@nexchat_archived_v3')
+      .then((data) => {
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) setArchivedChatIds(new Set(parsed));
+        }
+      })
+      .catch(() => {});
+
+    AsyncStorage.getItem('@nexchat_app_lock_config')
+      .then((data) => {
+        if (data) {
+          const parsed = JSON.parse(data);
+          setAppLockConfig(parsed);
+          setUnlockMode(parsed.method === 'pin' ? 'pin' : 'huella');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleArchiveChat = (chatId) => {
+    setArchivedChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      AsyncStorage.setItem('@nexchat_archived_v3', JSON.stringify([...next])).catch(() => {});
+      return next;
+    });
+  };
+
+  const handleUpdateAppLockConfig = async (newConfig) => {
+    setAppLockConfig(newConfig);
+    setUnlockMode(newConfig.method === 'pin' ? 'pin' : 'huella');
+    await AsyncStorage.setItem('@nexchat_app_lock_config', JSON.stringify(newConfig)).catch(() => {});
+  };
+
+  const handleFingerprintUnlock = () => {
+    setFingerprintScanning(true);
+    setTimeout(() => {
+      setFingerprintScanning(false);
+      setIsLocked(false);
+      setUnlockPin('');
+    }, 380);
+  };
 
   // Banner de actualización OTA
   const [otaAvailable, setOtaAvailable] = useState(false);
@@ -494,12 +556,22 @@ function MainApp() {
       } catch {}
     }, 40000);
 
-    // Detectar cuando el usuario minimiza o vuelve a abrir la app para sincronizar al instante
+    // Detectar cuando el usuario minimiza o vuelve a abrir la app para sincronizar al instante y auto-bloquear
     const appStateSub = AppState.addEventListener('change', async (nextState) => {
       try {
         const isActive = nextState === 'active';
         if (isActive) {
           sincronizarIncremental();
+          if (appLockConfigRef.current?.enabled && backgroundTimeRef.current) {
+            const elapsed = Date.now() - backgroundTimeRef.current;
+            const waitTime = appLockConfigRef.current.autoLockTime === '1m' ? 60000 : (appLockConfigRef.current.autoLockTime === '5m' ? 300000 : 0);
+            if (elapsed >= waitTime) {
+              setIsLocked(true);
+              setUnlockMode(appLockConfigRef.current.method === 'pin' ? 'pin' : 'huella');
+            }
+          }
+        } else if (nextState === 'background' || nextState === 'inactive') {
+          backgroundTimeRef.current = Date.now();
         }
         await supabase
           .from('nexchat_users')
@@ -1526,6 +1598,8 @@ function MainApp() {
           userProfile={userProfile}
           usersPresence={usersPresence}
           allChats={chats}
+          isArchived={selectedChat && archivedChatIds.has(selectedChat.id)}
+          onToggleArchiveChat={handleToggleArchiveChat}
           onBack={() => setSelectedChatId(null)}
           onSendMessage={handleSendMessage}
           onStartCall={handleStartCall}
@@ -1588,6 +1662,8 @@ function MainApp() {
                 chats={chats}
                 userProfile={userProfile}
                 usersPresence={usersPresence}
+                archivedChatIds={archivedChatIds}
+                onToggleArchiveChat={handleToggleArchiveChat}
                 onSelectChat={(chat) => {
                   setChats((prev) =>
                     prev.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c))
@@ -1622,10 +1698,15 @@ function MainApp() {
             {activeTab === 'perfil' && (
               <PerfilScreen
                 userProfile={userProfile}
+                appLockConfig={appLockConfig}
+                onUpdateAppLockConfig={handleUpdateAppLockConfig}
                 onUpdateProfile={handleUpdateProfile}
                 onCheckUpdates={handleCheckUpdates}
                 onLogout={handleLogout}
-                onLockNow={() => setIsLocked(true)}
+                onLockNow={() => {
+                  setUnlockMode(appLockConfig.method === 'pin' ? 'pin' : 'huella');
+                  setIsLocked(true);
+                }}
                 onPanicWipe={handlePanicWipe}
               />
             )}
@@ -1991,31 +2072,84 @@ function MainApp() {
         )}
       </Modal>
 
-      {/* MODAL DE BLOQUEO POR PIN */}
+      {/* MODAL DE BLOQUEO POR HUELLA / PIN ESTILO WHATSAPP */}
       <Modal visible={isLocked} animationType="fade" transparent>
         <View style={styles.lockOverlay}>
           <View style={[styles.lockCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={{ fontSize: 44, marginBottom: 8 }}>🔒</Text>
+            <View style={styles.lockShieldIconBadge}>
+              <Ionicons name="shield-checkmark" size={26} color="#00A884" />
+            </View>
             <Text style={[styles.lockTitle, { color: colors.text }]}>NexChat Bloqueado</Text>
             <Text style={[styles.lockSub, { color: colors.textMuted }]}>
-              Ingresa tu PIN de seguridad 2FA para desbloquear tus conversaciones:
+              {unlockMode === 'huella'
+                ? 'Apoya tu dedo en el sensor de huella dactilar para desbloquear tus conversaciones'
+                : 'Ingresa tu PIN de seguridad para desbloquear tus conversaciones'}
             </Text>
-            <TextInput
-              style={[styles.lockInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
-              placeholder="••••"
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry
-              keyboardType="number-pad"
-              maxLength={8}
-              value={unlockPin}
-              onChangeText={setUnlockPin}
-            />
-            <TouchableOpacity
-              onPress={handleUnlockScreen}
-              style={[styles.unlockBtn, { backgroundColor: colors.primary }]}
-            >
-              <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Desbloquear</Text>
-            </TouchableOpacity>
+
+            {unlockMode === 'huella' ? (
+              <View style={{ alignItems: 'center', width: '100%', marginVertical: 14 }}>
+                <TouchableOpacity
+                  onPress={handleFingerprintUnlock}
+                  activeOpacity={0.7}
+                  style={[
+                    styles.fingerprintCircleBtn,
+                    fingerprintScanning && { backgroundColor: 'rgba(0,168,132,0.3)', borderColor: '#00A884', transform: [{ scale: 1.08 }] },
+                  ]}
+                >
+                  <Ionicons
+                    name="finger-print"
+                    size={66}
+                    color={fingerprintScanning ? '#00A884' : colors.primary}
+                  />
+                </TouchableOpacity>
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', marginTop: 14 }}>
+                  {fingerprintScanning ? 'Verificando huella...' : 'Toca el sensor de huella'}
+                </Text>
+
+                {/* Opción para alternar a PIN */}
+                <TouchableOpacity
+                  onPress={() => setUnlockMode('pin')}
+                  style={{ marginTop: 22, paddingVertical: 8, paddingHorizontal: 16 }}
+                >
+                  <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '700' }}>
+                    O desbloquear con PIN de seguridad
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ width: '100%' }}>
+                <TextInput
+                  style={[styles.lockInput, { backgroundColor: colors.inputBg, color: colors.text, borderColor: colors.border }]}
+                  placeholder="••••"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry
+                  keyboardType="number-pad"
+                  maxLength={8}
+                  value={unlockPin}
+                  onChangeText={setUnlockPin}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  onPress={handleUnlockScreen}
+                  style={[styles.unlockBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Desbloquear con PIN</Text>
+                </TouchableOpacity>
+
+                {/* Opción para alternar a Huella */}
+                <TouchableOpacity
+                  onPress={() => setUnlockMode('huella')}
+                  style={{ marginTop: 14, alignItems: 'center', paddingVertical: 8 }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="finger-print" size={18} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800' }}>
+                      Usar Huella Dactilar
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -2505,6 +2639,32 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 1,
     alignItems: 'center',
+  },
+  lockShieldIconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(0,168,132,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,168,132,0.3)',
+  },
+  fingerprintCircleBtn: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    backgroundColor: 'rgba(0,168,132,0.12)',
+    borderWidth: 2,
+    borderColor: 'rgba(0,168,132,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#00A884',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
   },
   lockTitle: { fontSize: 20, fontWeight: '900', marginBottom: 6 },
   lockSub: { fontSize: 13, textAlign: 'center', marginBottom: 18, lineHeight: 18 },

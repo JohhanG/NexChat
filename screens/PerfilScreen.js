@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, BackHandler
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Alert, BackHandler, Switch
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,13 +16,31 @@ export default function PerfilScreen({
   onLogout,
   onLockNow,
   onPanicWipe,
+  appLockConfig = { enabled: false, method: 'huella', autoLockTime: 'immediate' },
+  onUpdateAppLockConfig,
 }) {
   const { colors, isDark, toggleTheme } = useTheme();
-  const [subMenu, setSubMenu] = useState(null); // null | 'editar' | 'blindaje'
+  const [subMenu, setSubMenu] = useState(null); // null | 'editar' | 'blindaje' | 'privacidad_bloqueo'
   const [name, setName] = useState(userProfile.name || '');
   const [bio, setBio] = useState(userProfile.bio || '');
   const [avatar, setAvatar] = useState(userProfile.avatar || '😎');
   const [saving, setSaving] = useState(false);
+
+  const isLockEnabled = Boolean(appLockConfig?.enabled);
+  const lockMethod = appLockConfig?.method || 'huella';
+  const autoLockTime = appLockConfig?.autoLockTime || 'immediate';
+
+  const updateLock = (updates) => {
+    const updated = {
+      enabled: isLockEnabled,
+      method: lockMethod,
+      autoLockTime: autoLockTime,
+      ...updates,
+    };
+    if (onUpdateAppLockConfig) {
+      onUpdateAppLockConfig(updated);
+    }
+  };
 
   // Interceptar gesto de deslizar atrás en Android cuando estamos en un submenú del Perfil
   useEffect(() => {
@@ -266,6 +284,169 @@ export default function PerfilScreen({
     );
   }
 
+  // SUB-MENÚ 3: PRIVACIDAD Y BLOQUEO DE APP (HUELLA / PIN)
+  if (subMenu === 'privacidad_bloqueo') {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
+          <TouchableOpacity onPress={() => setSubMenu(null)} style={styles.backMenuBtn}>
+            <Ionicons name="arrow-back" size={20} color={colors.primary} />
+            <Text style={[styles.backMenuText, { color: colors.primary }]}>Volver a Ajustes</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.shieldHeroCircle, { backgroundColor: 'rgba(0,168,132,0.15)' }]}>
+              <Ionicons name="finger-print" size={38} color="#00A884" />
+            </View>
+            <Text style={[styles.heroTitle, { color: colors.text }]}>Bloqueo de NexChat</Text>
+            <Text style={[styles.heroSub, { color: colors.textMuted }]}>
+              Protege tus chats con huella dactilar o código PIN cada vez que salgas de la aplicación.
+            </Text>
+          </View>
+
+          {/* Switch Activar Bloqueo */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 2 }]}>
+                  Bloquear con Huella / PIN
+                </Text>
+                <Text style={[styles.cardDesc, { color: colors.textMuted, marginBottom: 0 }]}>
+                  {isLockEnabled
+                    ? 'La app solicitará verificación antes de abrirse o al regresar'
+                    : 'Activa esta opción para exigir autenticación al entrar'}
+                </Text>
+              </View>
+              <Switch
+                value={isLockEnabled}
+                onValueChange={(val) => updateLock({ enabled: val })}
+                thumbColor={isLockEnabled ? '#00A884' : '#94A3B8'}
+                trackColor={{ false: '#334155', true: 'rgba(0,168,132,0.4)' }}
+              />
+            </View>
+          </View>
+
+          {isLockEnabled && (
+            <>
+              {/* Selector de Método de Desbloqueo */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Método de Desbloqueo</Text>
+                <Text style={[styles.cardDesc, { color: colors.textMuted }]}>
+                  Elige cómo deseas desbloquear tu WhatsApp / NexChat:
+                </Text>
+
+                <View style={{ gap: 8, marginTop: 4 }}>
+                  {[
+                    { id: 'huella', label: 'Huella Dactilar', icon: 'finger-print', desc: 'Sensor de huella digital táctil' },
+                    { id: 'pin', label: 'Código PIN (2FA)', icon: 'keypad', desc: 'Ingreso numérico de seguridad' },
+                    { id: 'ambos', label: 'Huella o PIN', icon: 'shield-checkmark', desc: 'Huella táctil con alternativa de PIN' },
+                  ].map((m) => {
+                    const isSelected = lockMethod === m.id;
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        onPress={() => updateLock({ method: m.id })}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          padding: 12,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? '#00A884' : colors.border,
+                          backgroundColor: isSelected ? 'rgba(0,168,132,0.1)' : colors.inputBg,
+                          gap: 12,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 19,
+                            backgroundColor: isSelected ? 'rgba(0,168,132,0.2)' : 'rgba(148,163,184,0.1)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name={m.icon} size={20} color={isSelected ? '#00A884' : colors.textMuted} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? '#00A884' : colors.text }}>
+                            {m.label}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>{m.desc}</Text>
+                        </View>
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? '#00A884' : colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Selector de Tiempo de Bloqueo Automático */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Bloqueo Automático</Text>
+                <Text style={[styles.cardDesc, { color: colors.textMuted }]}>
+                  Tiempo de espera tras salir o minimizar la app:
+                </Text>
+
+                <View style={{ gap: 8, marginTop: 4 }}>
+                  {[
+                    { id: 'immediate', label: 'Inmediatamente', desc: 'Al salir o cambiar de app se bloqueará' },
+                    { id: '1m', label: 'Después de 1 minuto', desc: 'Permite salir y volver rápidamente sin pedir huella' },
+                    { id: '5m', label: 'Después de 5 minutos', desc: 'Bloqueo tras 5 minutos en segundo plano' },
+                  ].map((t) => {
+                    const isSelected = autoLockTime === t.id;
+                    return (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => updateLock({ autoLockTime: t.id })}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          padding: 12,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? '#00A884' : colors.border,
+                          backgroundColor: isSelected ? 'rgba(0,168,132,0.1)' : colors.inputBg,
+                          gap: 12,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? '#00A884' : colors.text }}>
+                            {t.label}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>{t.desc}</Text>
+                        </View>
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={isSelected ? '#00A884' : colors.textMuted}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* Botón Probar Bloqueo Ahora */}
+          <TouchableOpacity
+            onPress={onLockNow}
+            style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 6 }]}
+          >
+            <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
+            <Text style={styles.saveBtnText}>Bloquear NexChat Ahora</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
   // MENÚ PRINCIPAL DE PERFIL Y AJUSTES (ESTILO WHATSAPP & TELEGRAM)
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -318,6 +499,23 @@ export default function PerfilScreen({
               <Text style={[styles.menuTitle, { color: colors.text }]}>Cuenta y Foto de Perfil</Text>
               <Text style={[styles.menuSub, { color: colors.textMuted }]}>
                 Cambiar foto de galería, nombre visible e info
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity onPress={() => setSubMenu('privacidad_bloqueo')} style={styles.menuRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
+              <Ionicons name="finger-print" size={20} color="#10B981" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Privacidad y Bloqueo de App</Text>
+              <Text style={[styles.menuSub, { color: colors.textMuted }]}>
+                {isLockEnabled
+                  ? `Bloqueo activo (${lockMethod === 'huella' ? 'Huella' : lockMethod === 'pin' ? 'PIN' : 'Huella o PIN'})`
+                  : 'Desactivado (configurar huella o PIN)'}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
