@@ -6,6 +6,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
 import * as Notifications from 'expo-notifications';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
@@ -94,6 +96,8 @@ function MainApp() {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
+  const [peerSharingScreen, setPeerSharingScreen] = useState(false);
+  const [peerPresenterName, setPeerPresenterName] = useState(null);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
 
@@ -104,13 +108,21 @@ function MainApp() {
   useEffect(() => { outgoingCallRef.current = outgoingCall; }, [outgoingCall]);
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
+  const isMutedRef = useRef(isMuted);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  const isSpeakerOnRef = useRef(isSpeakerOn);
+  useEffect(() => { isSpeakerOnRef.current = isSpeakerOn; }, [isSpeakerOn]);
+
+  const callAudioRecordingRef = useRef(null);
+  const callAudioLoopActiveRef = useRef(false);
+
   // Bloqueo de pantalla por Huella Dactilar / PIN
   const [isLocked, setIsLocked] = useState(false);
   const [unlockPin, setUnlockPin] = useState('');
   const [appLockConfig, setAppLockConfig] = useState({
-    enabled: true,
+    enabled: false, // Por defecto desactivado para no bloquear toda la app al navegar
     method: 'huella', // 'huella' | 'pin' | 'ambos'
-    autoLockTime: 'immediate', // 'immediate' | '1m' | '5m'
+    autoLockTime: '1m', // 'immediate' | '1m' | '5m'
   });
   const [unlockMode, setUnlockMode] = useState('huella');
   const [fingerprintScanning, setFingerprintScanning] = useState(false);
@@ -118,8 +130,10 @@ function MainApp() {
   useEffect(() => { appLockConfigRef.current = appLockConfig; }, [appLockConfig]);
   const backgroundTimeRef = useRef(null);
 
-  // Registro persistente de Chats Archivados
+  // Registro persistente de Chats Archivados y Chats Bloqueados con Huella / PIN
   const [archivedChatIds, setArchivedChatIds] = useState(new Set());
+  const [lockedChatIds, setLockedChatIds] = useState(new Set());
+  const [chatAwaitingUnlock, setChatAwaitingUnlock] = useState(null);
 
   useEffect(() => {
     AsyncStorage.getItem('@nexchat_archived_v3')
@@ -127,6 +141,15 @@ function MainApp() {
         if (data) {
           const parsed = JSON.parse(data);
           if (Array.isArray(parsed)) setArchivedChatIds(new Set(parsed));
+        }
+      })
+      .catch(() => {});
+
+    AsyncStorage.getItem('@nexchat_locked_chats_v3')
+      .then((data) => {
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) setLockedChatIds(new Set(parsed));
         }
       })
       .catch(() => {});
@@ -155,6 +178,31 @@ function MainApp() {
     });
   };
 
+  const handleToggleLockChat = (chatId) => {
+    setLockedChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+        Alert.alert('Chat desbloqueado', 'Esta conversación ya no pedirá huella ni PIN.');
+      } else {
+        next.add(chatId);
+        Alert.alert('Chat bloqueado 🔒', 'Esta conversación ahora requerirá tu huella o PIN para abrirse.');
+      }
+      AsyncStorage.setItem('@nexchat_locked_chats_v3', JSON.stringify([...next])).catch(() => {});
+      return next;
+    });
+  };
+
+  const handleSelectChat = (chat) => {
+    if (!chat) return;
+    if (lockedChatIds.has(chat.id)) {
+      setChatAwaitingUnlock(chat);
+      setUnlockMode(appLockConfig.method === 'pin' ? 'pin' : 'huella');
+    } else {
+      setSelectedChatId(chat.id);
+    }
+  };
+
   const handleUpdateAppLockConfig = async (newConfig) => {
     setAppLockConfig(newConfig);
     setUnlockMode(newConfig.method === 'pin' ? 'pin' : 'huella');
@@ -166,8 +214,12 @@ function MainApp() {
     setTimeout(() => {
       setFingerprintScanning(false);
       setIsLocked(false);
+      if (chatAwaitingUnlock) {
+        setSelectedChatId(chatAwaitingUnlock.id);
+        setChatAwaitingUnlock(null);
+      }
       setUnlockPin('');
-    }, 380);
+    }, 350);
   };
 
   // Banner de actualización OTA
@@ -384,10 +436,132 @@ function MainApp() {
     } else {
       setCallSeconds(0);
       setIsSharingScreen(false);
+      setPeerSharingScreen(false);
       setIsCameraOn(false);
     }
     return () => clearInterval(timer);
   }, [activeCall]);
+
+  // Modo de Audio para Llamadas (Altavoz vs Auricular)
+  useEffect(() => {
+    if (activeCall) {
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: !isSpeakerOn,
+      }).catch(() => {});
+    }
+  }, [isSpeakerOn, activeCall]);
+
+  // Streaming Continuo de Voz en Tiempo Real durante la Llamada
+  useEffect(() => {
+    if (!activeCall) {
+      callAudioLoopActiveRef.current = false;
+      if (callAudioRecordingRef.current) {
+        callAudioRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+        callAudioRecordingRef.current = null;
+      }
+      return;
+    }
+
+    callAudioLoopActiveRef.current = true;
+
+    const runVoiceLoop = async () => {
+      while (callAudioLoopActiveRef.current) {
+        if (isMutedRef.current) {
+          await new Promise((r) => setTimeout(r, 800));
+          continue;
+        }
+
+        try {
+          const recording = new Audio.Recording();
+          await recording.prepareToRecordAsync({
+            android: {
+              extension: '.m4a',
+              outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+              audioEncoder: Audio.AndroidAudioEncoder.AAC,
+              sampleRate: 16000,
+              numberOfChannels: 1,
+              bitRate: 32000,
+            },
+            ios: {
+              extension: '.m4a',
+              audioQuality: Audio.IOSAudioQuality.LOW,
+              sampleRate: 16000,
+              numberOfChannels: 1,
+              bitRate: 32000,
+              linearPCMBitDepth: 16,
+              linearPCMIsBigEndian: false,
+              linearPCMIsFloat: false,
+            },
+            web: {},
+          });
+          await recording.startAsync();
+          callAudioRecordingRef.current = recording;
+
+          // Trozo de audio de 1.4s para baja latencia
+          await new Promise((r) => setTimeout(r, 1400));
+
+          if (!callAudioLoopActiveRef.current) {
+            await recording.stopAndUnloadAsync().catch(() => {});
+            break;
+          }
+
+          await recording.stopAndUnloadAsync().catch(() => {});
+          const uri = recording.getURI();
+          if (uri && !isMutedRef.current && realtimeChannelRef.current && activeCallRef.current) {
+            const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+            if (b64 && b64.length > 50) {
+              realtimeChannelRef.current.send({
+                type: 'broadcast',
+                event: 'fast_call_voice',
+                payload: {
+                  callId: activeCallRef.current.id,
+                  senderPhone: userProfile.phone,
+                  receiverPhone: activeCallRef.current.peerPhone,
+                  audioB64: b64,
+                },
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+    };
+
+    runVoiceLoop();
+
+    return () => {
+      callAudioLoopActiveRef.current = false;
+      if (callAudioRecordingRef.current) {
+        callAudioRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+        callAudioRecordingRef.current = null;
+      }
+    };
+  }, [activeCall]);
+
+  const handleToggleScreenShare = () => {
+    const nextState = !isSharingScreen;
+    setIsSharingScreen(nextState);
+    if (realtimeChannelRef.current && activeCall) {
+      realtimeChannelRef.current
+        .send({
+          type: 'broadcast',
+          event: 'fast_call_screen',
+          payload: {
+            callId: activeCall.id,
+            callerPhone: userProfile.phone,
+            receiverPhone: activeCall.peerPhone,
+            isSharing: nextState,
+            presenterName: userProfile.name || userProfile.phone,
+          },
+        })
+        .catch(() => {});
+    }
+  };
 
   // Temporizador para llamada saliente (cancela automáticamente a los 40s si no responden)
   useEffect(() => {
@@ -646,7 +820,38 @@ function MainApp() {
           setOutgoingCall(null);
           setActiveCall(null);
           setIsSharingScreen(false);
+          setPeerSharingScreen(false);
           setIsCameraOn(false);
+        }
+      })
+      .on('broadcast', { event: 'fast_call_voice' }, async ({ payload }) => {
+        if (!payload || !userProfile?.phone) return;
+        const act = activeCallRef.current;
+        if (
+          act &&
+          payload.callId === act.id &&
+          phonesMatch(payload.receiverPhone, userProfile.phone) &&
+          payload.audioB64
+        ) {
+          try {
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: `data:audio/m4a;base64,${payload.audioB64}` },
+              { shouldPlay: true, volume: 1.0 }
+            );
+            sound.setOnPlaybackStatusUpdate((status) => {
+              if (status.didJustFinish) {
+                sound.unloadAsync().catch(() => {});
+              }
+            });
+          } catch (e) {}
+        }
+      })
+      .on('broadcast', { event: 'fast_call_screen' }, ({ payload }) => {
+        if (!payload || !userProfile?.phone) return;
+        const act = activeCallRef.current;
+        if (act && payload.callId === act.id && phonesMatch(payload.receiverPhone, userProfile.phone)) {
+          setPeerSharingScreen(Boolean(payload.isSharing));
+          setPeerPresenterName(payload.presenterName || 'Contacto');
         }
       })
       .on(
@@ -1397,10 +1602,16 @@ function MainApp() {
         })
         .catch(() => {});
     }
+    callAudioLoopActiveRef.current = false;
+    if (callAudioRecordingRef.current) {
+      callAudioRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+      callAudioRecordingRef.current = null;
+    }
     setActiveCall(null);
     setOutgoingCall(null);
     setIncomingCall(null);
     setIsSharingScreen(false);
+    setPeerSharingScreen(false);
     setIsCameraOn(false);
   };
 
@@ -1468,6 +1679,10 @@ function MainApp() {
       candidateHash === userProfile.pinHash
     ) {
       setIsLocked(false);
+      if (chatAwaitingUnlock) {
+        setSelectedChatId(chatAwaitingUnlock.id);
+        setChatAwaitingUnlock(null);
+      }
       setUnlockPin('');
     } else {
       Alert.alert('PIN Incorrecto', 'El PIN de seguridad no coincide.');
@@ -1619,6 +1834,8 @@ function MainApp() {
           allChats={chats}
           isArchived={selectedChat && archivedChatIds.has(selectedChat.id)}
           onToggleArchiveChat={handleToggleArchiveChat}
+          isLocked={selectedChat && lockedChatIds.has(selectedChat.id)}
+          onToggleLockChat={handleToggleLockChat}
           onBack={() => setSelectedChatId(null)}
           onSendMessage={handleSendMessage}
           onStartCall={handleStartCall}
@@ -1683,11 +1900,13 @@ function MainApp() {
                 usersPresence={usersPresence}
                 archivedChatIds={archivedChatIds}
                 onToggleArchiveChat={handleToggleArchiveChat}
+                lockedChatIds={lockedChatIds}
+                onToggleLockChat={handleToggleLockChat}
                 onSelectChat={(chat) => {
                   setChats((prev) =>
                     prev.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c))
                   );
-                  setSelectedChatId(chat.id);
+                  handleSelectChat(chat);
                 }}
                 onCreateDirectChat={handleCreateDirectChat}
                 onCreateGroupChat={handleCreateGroupChat}
@@ -1719,6 +1938,7 @@ function MainApp() {
                 userProfile={userProfile}
                 appLockConfig={appLockConfig}
                 onUpdateAppLockConfig={handleUpdateAppLockConfig}
+                lockedChatIds={lockedChatIds}
                 onUpdateProfile={handleUpdateProfile}
                 onCheckUpdates={handleCheckUpdates}
                 onLogout={handleLogout}
@@ -1920,21 +2140,38 @@ function MainApp() {
 
             {/* ÁREA CENTRAL PRINCIPAL: PANTALLA COMPARTIDA / CÁMARA / AUDIO */}
             <View style={styles.callCenterArea}>
-              {isSharingScreen ? (
-                /* VISTA DE PANTALLA COMPARTIDA */
+              {peerSharingScreen ? (
+                /* VISTA CUANDO EL CONTACTO ESTÁ PRESENTANDO SU PANTALLA */
                 <View style={styles.screenShareCard}>
                   <View style={styles.screenShareGlow}>
-                    <Text style={{ fontSize: 52 }}>💻</Text>
+                    <Ionicons name="desktop-outline" size={54} color="#38BDF8" />
                     <View style={styles.screenShareLiveTag}>
                       <View style={styles.livePulseDot} />
-                      <Text style={styles.screenShareLiveText}>EN VIVO • COMPARTIENDO PANTALLA</Text>
+                      <Text style={styles.screenShareLiveText}>EN VIVO • PANTALLA COMPARTIDA</Text>
+                    </View>
+                    <Text style={styles.screenShareTitle}>
+                      {peerPresenterName || activeCall.name} está presentando
+                    </Text>
+                    <Text style={styles.screenShareDesc}>
+                      Estás viendo la pantalla de tu contacto en tiempo real en alta resolución.
+                    </Text>
+                  </View>
+                </View>
+              ) : isSharingScreen ? (
+                /* VISTA DE PANTALLA COMPARTIDA LOCAL */
+                <View style={styles.screenShareCard}>
+                  <View style={styles.screenShareGlow}>
+                    <Ionicons name="phone-portrait-outline" size={54} color="#10B981" />
+                    <View style={[styles.screenShareLiveTag, { backgroundColor: 'rgba(16,185,129,0.2)' }]}>
+                      <View style={[styles.livePulseDot, { backgroundColor: '#10B981' }]} />
+                      <Text style={[styles.screenShareLiveText, { color: '#10B981' }]}>ESTÁS PRESENTANDO TU PANTALLA</Text>
                     </View>
                     <Text style={styles.screenShareTitle}>Transmitiendo tu pantalla</Text>
                     <Text style={styles.screenShareDesc}>
                       {activeCall.name} está viendo todo lo que muestras en tu celular en tiempo real con alta resolución.
                     </Text>
                     <TouchableOpacity
-                      onPress={() => setIsSharingScreen(false)}
+                      onPress={handleToggleScreenShare}
                       style={styles.stopScreenBtn}
                       activeOpacity={0.8}
                     >
@@ -2054,7 +2291,7 @@ function MainApp() {
 
                 {/* 4. PRESENTAR PANTALLA */}
                 <TouchableOpacity
-                  onPress={() => setIsSharingScreen(!isSharingScreen)}
+                  onPress={handleToggleScreenShare}
                   style={styles.callBtnWrap}
                   activeOpacity={0.7}
                 >
@@ -2092,15 +2329,19 @@ function MainApp() {
       </Modal>
 
       {/* MODAL DE BLOQUEO POR HUELLA / PIN ESTILO WHATSAPP */}
-      <Modal visible={isLocked} animationType="fade" transparent>
+      <Modal visible={isLocked || !!chatAwaitingUnlock} animationType="fade" transparent>
         <View style={styles.lockOverlay}>
           <View style={[styles.lockCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.lockShieldIconBadge}>
               <Ionicons name="shield-checkmark" size={26} color="#00A884" />
             </View>
-            <Text style={[styles.lockTitle, { color: colors.text }]}>NexChat Bloqueado</Text>
+            <Text style={[styles.lockTitle, { color: colors.text }]}>
+              {chatAwaitingUnlock ? `Chat Bloqueado 🔒` : 'NexChat Bloqueado'}
+            </Text>
             <Text style={[styles.lockSub, { color: colors.textMuted }]}>
-              {unlockMode === 'huella'
+              {chatAwaitingUnlock
+                ? `Verifica tu identidad para ver los mensajes con ${chatAwaitingUnlock.name || 'este contacto'}`
+                : unlockMode === 'huella'
                 ? 'Apoya tu dedo en el sensor de huella dactilar para desbloquear tus conversaciones'
                 : 'Ingresa tu PIN de seguridad para desbloquear tus conversaciones'}
             </Text>
@@ -2134,6 +2375,20 @@ function MainApp() {
                     O desbloquear con PIN de seguridad
                   </Text>
                 </TouchableOpacity>
+
+                {chatAwaitingUnlock && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setChatAwaitingUnlock(null);
+                      setUnlockPin('');
+                    }}
+                    style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 16 }}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '800' }}>
+                      Cancelar
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <View style={{ width: '100%' }}>
@@ -2167,6 +2422,20 @@ function MainApp() {
                     </Text>
                   </View>
                 </TouchableOpacity>
+
+                {chatAwaitingUnlock && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setChatAwaitingUnlock(null);
+                      setUnlockPin('');
+                    }}
+                    style={{ marginTop: 12, alignItems: 'center', paddingVertical: 8 }}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '800' }}>
+                      Cancelar
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

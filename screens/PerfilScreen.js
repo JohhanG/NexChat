@@ -18,6 +18,7 @@ export default function PerfilScreen({
   onPanicWipe,
   appLockConfig = { enabled: false, method: 'huella', autoLockTime: 'immediate' },
   onUpdateAppLockConfig,
+  lockedChatIds = new Set(),
 }) {
   const { colors, isDark, toggleTheme } = useTheme();
   const [subMenu, setSubMenu] = useState(null); // null | 'editar' | 'blindaje' | 'privacidad_bloqueo'
@@ -433,6 +434,26 @@ export default function PerfilScreen({
               </View>
             </>
           )}
+
+          {/* Tarjeta de Chats Protegidos Individualmente */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <Ionicons name="lock-closed" size={18} color="#F59E0B" />
+              <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 0 }]}>
+                Bloqueo Individual por Chat
+              </Text>
+            </View>
+            <Text style={[styles.cardDesc, { color: colors.textMuted }]}>
+              {lockedChatIds.size > 0
+                ? `Tienes ${lockedChatIds.size} conversación(es) protegida(s) con huella/PIN.`
+                : 'No tienes chats bloqueados individualmente.'}
+            </Text>
+            <View style={{ backgroundColor: colors.inputBg, padding: 12, borderRadius: 12, marginTop: 4 }}>
+              <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
+                💡 <Text style={{ fontWeight: '800', color: colors.text }}>Cómo bloquear un chat:</Text> En la lista de chats, mantén presionado cualquier contacto y elige <Text style={{ fontWeight: '800', color: '#F59E0B' }}>"Bloquear chat con huella/PIN"</Text>.
+              </Text>
+            </View>
+          </View>
 
           {/* Botón Probar Bloqueo Ahora */}
           <TouchableOpacity

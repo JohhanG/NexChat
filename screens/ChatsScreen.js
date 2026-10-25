@@ -36,6 +36,8 @@ export default function ChatsScreen({
   usersPresence = {},
   archivedChatIds = new Set(),
   onToggleArchiveChat,
+  lockedChatIds = new Set(),
+  onToggleLockChat,
   onSelectChat,
   onCreateDirectChat,
   onCreateGroupChat,
@@ -626,6 +628,9 @@ export default function ChatsScreen({
                       {item.name}
                     </Text>
                     {item.official && <Ionicons name="checkmark-circle" size={16} color="#00A884" />}
+                    {lockedChatIds.has(item.id) && (
+                      <Ionicons name="lock-closed" size={13} color="#F59E0B" />
+                    )}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text
@@ -860,6 +865,53 @@ export default function ChatsScreen({
                   {archivedChatIds.has(chatEditando?.id)
                     ? 'Regresar a la lista principal de conversaciones'
                     : 'Ocultar conversación en la carpeta de archivados'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Bloquear / Desbloquear Chat con Huella / PIN */}
+            <TouchableOpacity
+              onPress={() => {
+                if (chatEditando && onToggleLockChat) {
+                  onToggleLockChat(chatEditando.id);
+                  setChatEditando(null);
+                }
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                backgroundColor: colors.inputBg,
+                marginBottom: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: lockedChatIds.has(chatEditando?.id) ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name={lockedChatIds.has(chatEditando?.id) ? 'lock-open-outline' : 'finger-print-outline'}
+                  size={19}
+                  color={lockedChatIds.has(chatEditando?.id) ? '#10B981' : '#F59E0B'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '800' }}>
+                  {lockedChatIds.has(chatEditando?.id) ? 'Desbloquear chat (quitar huella)' : 'Bloquear chat con huella / PIN'}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                  {lockedChatIds.has(chatEditando?.id)
+                    ? 'Abrir conversación directamente sin pedir huella'
+                    : 'Pedir huella o PIN para ver los mensajes'}
                 </Text>
               </View>
             </TouchableOpacity>

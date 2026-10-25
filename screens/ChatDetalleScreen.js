@@ -71,6 +71,8 @@ export default function ChatDetalleScreen({
   onDeleteChat,
   isArchived = false,
   onToggleArchiveChat,
+  isLocked = false,
+  onToggleLockChat,
 }) {
   const { colors } = useTheme();
   const [text, setText] = useState('');
@@ -1804,6 +1806,19 @@ export default function ChatDetalleScreen({
                     <Ionicons name={isArchived ? "archive" : "archive-outline"} size={17} color={isArchived ? "#00A884" : colors.text} />
                     <Text style={{ color: isArchived ? "#00A884" : colors.text, fontSize: 13, fontWeight: '800' }}>
                       {isArchived ? 'Desarchivar' : 'Archivar'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (onToggleLockChat) onToggleLockChat(chat.id);
+                      setInfoModal(false);
+                    }}
+                    style={[styles.sheetActionBtn, { backgroundColor: isLocked ? 'rgba(245,158,11,0.15)' : colors.inputBg, borderColor: isLocked ? '#F59E0B' : colors.border }]}
+                  >
+                    <Ionicons name={isLocked ? "lock-open-outline" : "finger-print-outline"} size={17} color={isLocked ? "#10B981" : "#F59E0B"} />
+                    <Text style={{ color: isLocked ? "#10B981" : "#F59E0B", fontSize: 13, fontWeight: '800' }}>
+                      {isLocked ? 'Desbloquear' : 'Bloquear Huella'}
                     </Text>
                   </TouchableOpacity>
 
