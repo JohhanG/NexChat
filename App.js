@@ -756,14 +756,15 @@ function MainApp() {
         const hora = m.time || new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const isAudioMsg = m.type === 'audio' || (plain && String(plain).startsWith('data:audio'));
         const isImageMsg = m.type === 'image' || (plain && String(plain).startsWith('data:image'));
+        const isStickerMsg = m.type === 'sticker';
         const msgObj = {
           id: m.id,
           sender: esMio ? 'me' : 'them',
           senderPhone: m.sender_phone,
           senderName: m.sender_name,
-          text: isAudioMsg ? '🎤 Nota de voz' : plain,
-          mediaUri: (isAudioMsg || isImageMsg) ? plain : null,
-          mediaType: isAudioMsg ? 'audio' : (isImageMsg ? 'image' : (m.type !== 'text' ? m.type : null)),
+          text: isAudioMsg ? '🎤 Nota de voz' : (isStickerMsg ? '✨ Sticker' : plain),
+          mediaUri: (isAudioMsg || isImageMsg || isStickerMsg) ? plain : null,
+          mediaType: isAudioMsg ? 'audio' : (isImageMsg ? 'image' : (isStickerMsg ? 'sticker' : (m.type !== 'text' ? m.type : null))),
           ephemeral: !!m.expires_at,
           time: hora,
         };
@@ -833,14 +834,15 @@ function MainApp() {
     const hora = m.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const isAudioMsg = m.type === 'audio' || (plain && String(plain).startsWith('data:audio'));
     const isImageMsg = m.type === 'image' || (plain && String(plain).startsWith('data:image'));
+    const isStickerMsg = m.type === 'sticker';
     const msgObj = {
       id: m.id,
       sender: 'them',
       senderPhone: m.sender_phone,
       senderName: m.sender_name,
-      text: isAudioMsg ? '🎤 Nota de voz' : plain,
-      mediaUri: (isAudioMsg || isImageMsg) ? plain : null,
-      mediaType: isAudioMsg ? 'audio' : (isImageMsg ? 'image' : (m.type !== 'text' ? m.type : null)),
+      text: isAudioMsg ? '🎤 Nota de voz' : (isStickerMsg ? '✨ Sticker' : plain),
+      mediaUri: (isAudioMsg || isImageMsg || isStickerMsg) ? plain : null,
+      mediaType: isAudioMsg ? 'audio' : (isImageMsg ? 'image' : (isStickerMsg ? 'sticker' : (m.type !== 'text' ? m.type : null))),
       ephemeral: !!m.expires_at,
       time: hora,
     };
@@ -1052,10 +1054,10 @@ function MainApp() {
     // Enviar por doble vía simultánea: Broadcast WebSocket (~50ms) + Base de Datos Supabase 24/7
     try {
       const dbType =
-        mediaType === 'image' || mediaType === 'audio' || mediaType === 'file'
+        mediaType === 'image' || mediaType === 'audio' || mediaType === 'sticker' || mediaType === 'file'
           ? mediaType
           : 'text';
-      const payloadContent = (mediaType === 'image' || mediaType === 'audio') ? mediaUri : cleanText;
+      const payloadContent = (mediaType === 'image' || mediaType === 'audio' || mediaType === 'sticker') ? mediaUri : cleanText;
       const cipher = cifrarMensajeE2EE(payloadContent, targetRoomId);
       const rowPayload = {
         id: msgId,

@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
@@ -19,18 +20,24 @@ const LISTA_EMOJIS = [
 ];
 
 const LISTA_STICKERS = [
-  { id: 'stk_1', icon: '🐱💖', label: 'Gatito Amor', bg: 'rgba(236,72,153,0.15)' },
-  { id: 'stk_2', icon: '🐶🎉', label: 'Perrito Fiesta', bg: 'rgba(16,185,129,0.15)' },
-  { id: 'stk_3', icon: '😎🔥', label: 'Modo Épico', bg: 'rgba(245,158,11,0.15)' },
-  { id: 'stk_4', icon: '🤣💀', label: 'Muerto de Risa', bg: 'rgba(59,130,246,0.15)' },
-  { id: 'stk_5', icon: '🙏✨', label: 'Bendiciones', bg: 'rgba(139,92,246,0.15)' },
-  { id: 'stk_6', icon: '🚀🌕', label: 'A la Luna', bg: 'rgba(14,165,233,0.15)' },
-  { id: 'stk_7', icon: '👑🦁', label: 'Rey Total', bg: 'rgba(234,179,8,0.15)' },
-  { id: 'stk_8', icon: '❤️‍🔥🫂', label: 'Abrazo Fuerte', bg: 'rgba(239,68,68,0.15)' },
-  { id: 'stk_9', icon: '☕😌', label: 'Cafecito Relax', bg: 'rgba(168,85,247,0.15)' },
-  { id: 'stk_10', icon: '🫡🛡️', label: 'A la Orden', bg: 'rgba(20,184,166,0.15)' },
-  { id: 'stk_11', icon: '🥳🎂', label: 'Celebración', bg: 'rgba(244,63,94,0.15)' },
-  { id: 'stk_12', icon: '💯🏆', label: 'Campeón 100%', bg: 'rgba(34,197,94,0.15)' },
+  { id: 'stk_1', url: 'https://cdn-icons-png.flaticon.com/512/742/742751.png', label: 'Risa Extrema' },
+  { id: 'stk_2', url: 'https://cdn-icons-png.flaticon.com/512/742/742752.png', label: 'Enamorado' },
+  { id: 'stk_3', url: 'https://cdn-icons-png.flaticon.com/512/742/742774.png', label: 'Modo Fachero' },
+  { id: 'stk_4', url: 'https://cdn-icons-png.flaticon.com/512/742/742923.png', label: 'Fiesta Loca' },
+  { id: 'stk_5', url: 'https://cdn-icons-png.flaticon.com/512/742/742760.png', label: 'Dinero' },
+  { id: 'stk_6', url: 'https://cdn-icons-png.flaticon.com/512/742/742784.png', label: 'Mente Explotada' },
+  { id: 'stk_7', url: 'https://cdn-icons-png.flaticon.com/512/742/742931.png', label: 'Guiño' },
+  { id: 'stk_8', url: 'https://cdn-icons-png.flaticon.com/512/742/742800.png', label: 'Abrazo' },
+  { id: 'stk_9', url: 'https://cdn-icons-png.flaticon.com/512/742/742778.png', label: 'Enojado' },
+  { id: 'stk_10', url: 'https://cdn-icons-png.flaticon.com/512/742/742813.png', label: 'Llorando' },
+  { id: 'stk_11', url: 'https://cdn-icons-png.flaticon.com/512/9437/9437541.png', label: 'Michi Divertido' },
+  { id: 'stk_12', url: 'https://cdn-icons-png.flaticon.com/512/9437/9437508.png', label: 'Michi Love' },
+  { id: 'stk_13', url: 'https://cdn-icons-png.flaticon.com/512/9437/9437562.png', label: 'Michi Risa' },
+  { id: 'stk_14', url: 'https://cdn-icons-png.flaticon.com/512/9437/9437535.png', label: 'Michi Bravo' },
+  { id: 'stk_15', url: 'https://cdn-icons-png.flaticon.com/512/9437/9437525.png', label: 'Michi Pensando' },
+  { id: 'stk_16', url: 'https://cdn-icons-png.flaticon.com/512/753/753344.png', label: 'Fuego Épico' },
+  { id: 'stk_17', url: 'https://cdn-icons-png.flaticon.com/512/1791/1791330.png', label: '100 Puntos' },
+  { id: 'stk_18', url: 'https://cdn-icons-png.flaticon.com/512/9437/9437517.png', label: 'Michi Sorpresa' },
 ];
 
 function obtenerIniciales(nombre = '') {
@@ -61,9 +68,21 @@ export default function ChatDetalleScreen({
   const [text, setText] = useState('');
   const [showPicker, setShowPicker] = useState(false);
   const [pickerTab, setPickerTab] = useState('emojis');
+  const [customStickers, setCustomStickers] = useState([]);
   const [ephemeralMode, setEphemeralMode] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@nexchat_custom_stickers')
+      .then((data) => {
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) setCustomStickers(parsed);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Reproductor de audio / nota de voz
   const [playingAudioId, setPlayingAudioId] = useState(null);
@@ -312,13 +331,45 @@ export default function ChatDetalleScreen({
   };
 
   const handleSendSticker = (stk) => {
+    const stickerUri = typeof stk === 'string' ? stk : (stk.url || stk.uri || stk.icon);
     onSendMessage({
-      text: `${stk.icon} ${stk.label}`,
-      mediaUri: stk.icon,
+      text: '✨ Sticker',
+      mediaUri: stickerUri,
       mediaType: 'sticker',
       ephemeral: ephemeralMode,
     });
     setShowPicker(false);
+  };
+
+  const handleCreateCustomSticker = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso requerido', 'Activa el permiso de galería para elegir tus stickers de WhatsApp o Sticker.ly.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.6,
+        base64: true,
+      });
+      if (!res.canceled && res.assets?.[0]) {
+        const asset = res.assets[0];
+        const uri = asset.base64 ? `data:image/png;base64,${asset.base64}` : asset.uri;
+        const nuevoStk = {
+          id: `custom_stk_${Date.now()}`,
+          url: uri,
+          label: 'Mi Sticker',
+        };
+        const updatedList = [nuevoStk, ...customStickers];
+        setCustomStickers(updatedList);
+        AsyncStorage.setItem('@nexchat_custom_stickers', JSON.stringify(updatedList.slice(0, 30))).catch(() => {});
+        handleSendSticker(nuevoStk);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo cargar el sticker.');
+    }
   };
 
   const handlePickImage = async () => {
@@ -633,11 +684,12 @@ export default function ChatDetalleScreen({
           const isSticker =
             !isDeleted &&
             (msg.mediaType === 'sticker' ||
-              (msg.text && LISTA_STICKERS.some((s) => msg.text === `${s.icon} ${s.label}`)));
+              msg.text === '✨ Sticker' ||
+              (msg.mediaUri && (msg.mediaUri.startsWith('http') || msg.mediaUri.startsWith('data:image')) && !msg.text));
 
           if (isSticker) {
-            const stickerEmoji = msg.mediaUri || (msg.text || '').split(' ')[0] || '😎🔥';
-            const stickerTitle = (msg.text || '').replace(stickerEmoji, '').trim();
+            const stickerUri = msg.mediaUri || (msg.text && msg.text.startsWith('http') ? msg.text : null);
+            const isImage = stickerUri && (stickerUri.startsWith('http') || stickerUri.startsWith('data:image'));
             return (
               <TouchableOpacity
                 key={msg.id}
@@ -649,15 +701,20 @@ export default function ChatDetalleScreen({
                   isMe ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
                 ]}
               >
-                <View style={[styles.stickerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={styles.stickerBigEmoji}>{stickerEmoji}</Text>
-                  {stickerTitle ? (
-                    <Text style={[styles.stickerLabel, { color: colors.primary }]}>{stickerTitle}</Text>
-                  ) : null}
-                  <View style={styles.msgFooter}>
-                    <Text style={[styles.msgTime, { color: colors.textMuted }]}>{msg.time}</Text>
+                <View style={styles.stickerCard}>
+                  {isImage ? (
+                    <Image
+                      source={{ uri: stickerUri }}
+                      style={styles.stickerImg}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <Text style={{ fontSize: 72 }}>{stickerUri || '😎'}</Text>
+                  )}
+                  <View style={styles.stickerTimePill}>
+                    <Text style={styles.stickerTimeText}>{msg.time}</Text>
                     {isMe && (
-                      <Ionicons name="checkmark-done" size={14} color="#53BDEB" style={{ marginLeft: 4 }} />
+                      <Ionicons name="checkmark-done" size={13} color="#53BDEB" style={{ marginLeft: 3 }} />
                     )}
                   </View>
                 </View>
@@ -807,19 +864,60 @@ export default function ChatDetalleScreen({
               ))}
             </ScrollView>
           ) : (
-            <ScrollView style={{ maxHeight: 185 }} contentContainerStyle={styles.stickerGrid}>
-              {LISTA_STICKERS.map((stk) => (
-                <TouchableOpacity
-                  key={stk.id}
-                  onPress={() => handleSendSticker(stk)}
-                  style={[styles.stickerItem, { backgroundColor: stk.bg, borderColor: colors.border }]}
-                >
-                  <Text style={{ fontSize: 32 }}>{stk.icon}</Text>
-                  <Text style={[styles.stickerItemLabel, { color: colors.text }]} numberOfLines={1}>
-                    {stk.label}
+            <ScrollView style={{ maxHeight: 230 }} showsVerticalScrollIndicator={false}>
+              {/* BOTÓN CREAR / AÑADIR DESDE STICKER.LY O GALERÍA */}
+              <TouchableOpacity
+                onPress={handleCreateCustomSticker}
+                style={[styles.addStickerBanner, { borderColor: colors.primary + '55' }]}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add-circle" size={24} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.addStickerText, { color: colors.primary }]}>
+                    + Añadir Sticker (Sticker.ly / Galería)
                   </Text>
-                </TouchableOpacity>
-              ))}
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                    Importa cualquier sticker o foto recortada de tu teléfono
+                  </Text>
+                </View>
+                <Ionicons name="sparkles" size={18} color={colors.primary} />
+              </TouchableOpacity>
+
+              {customStickers.length > 0 && (
+                <>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMuted, marginHorizontal: 14, marginTop: 4, marginBottom: 6 }}>
+                    ⭐ Mis Stickers
+                  </Text>
+                  <View style={styles.stickerGrid}>
+                    {customStickers.map((stk) => (
+                      <TouchableOpacity
+                        key={stk.id}
+                        onPress={() => handleSendSticker(stk)}
+                        style={[styles.stickerItem, { backgroundColor: colors.inputBg }]}
+                        activeOpacity={0.7}
+                      >
+                        <Image source={{ uri: stk.url }} style={styles.stickerPickerImg} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMuted, marginHorizontal: 14, marginTop: 8, marginBottom: 6 }}>
+                🔥 Stickers Oficiales NexChat
+              </Text>
+              <View style={styles.stickerGrid}>
+                {LISTA_STICKERS.map((stk) => (
+                  <TouchableOpacity
+                    key={stk.id}
+                    onPress={() => handleSendSticker(stk)}
+                    style={[styles.stickerItem, { backgroundColor: colors.inputBg }]}
+                    activeOpacity={0.7}
+                  >
+                    <Image source={{ uri: stk.url }} style={styles.stickerPickerImg} />
+                  </TouchableOpacity>
+                ))}
+              </View>
             </ScrollView>
           )}
         </View>
@@ -1361,16 +1459,34 @@ const styles = StyleSheet.create({
   },
   msgOut: { alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   msgIn: { alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
-  stickerBubble: { marginBottom: 10 },
+  stickerBubble: { marginBottom: 6, marginHorizontal: 6 },
   stickerCard: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 22,
-    borderWidth: 1,
+    backgroundColor: 'transparent',
     alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    padding: 2,
   },
-  stickerBigEmoji: { fontSize: 54, marginBottom: 4 },
-  stickerLabel: { fontSize: 12, fontWeight: '900', marginBottom: 2 },
+  stickerImg: {
+    width: 140,
+    height: 140,
+  },
+  stickerTimePill: {
+    position: 'absolute',
+    bottom: 2,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  stickerTimeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   senderLabel: { fontSize: 11, fontWeight: '800', marginBottom: 3 },
   msgImage: { width: 220, height: 165, borderRadius: 10, marginBottom: 6 },
   audioRow: {
@@ -1423,22 +1539,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 10,
   },
+  addStickerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    marginHorizontal: 12,
+    marginVertical: 8,
+  },
+  addStickerText: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
   stickerGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    padding: 10,
-    gap: 8,
+    paddingHorizontal: 12,
+    gap: 10,
   },
   stickerItem: {
-    width: '31%',
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    width: 64,
+    height: 64,
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
   },
-  stickerItemLabel: { fontSize: 11, fontWeight: '800', marginTop: 4 },
+  stickerPickerImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
