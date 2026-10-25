@@ -11,6 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { generarHuellaSeguridad, formatearEstadoConexion, esAdminOficialNexChat } from '../lib/seguridad';
+import {
+  resumirConversacion,
+  traducirTexto,
+  sugerirRespuestasRapidas,
+  optimizarMensaje,
+} from '../lib/ai';
 
 const LISTA_EMOJIS = [
   '😀', '😂', '🤣', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😇',
@@ -101,6 +107,73 @@ export default function ChatDetalleScreen({
 
   // Modal Eliminar Mensaje
   const [selectedMessage, setSelectedMessage] = useState(null);
+
+  // Modo Walk & Talk (Caminar Seguro)
+  const [walkMode, setWalkMode] = useState(false);
+
+  // NexAI - Asistente, Resumen y Traductor
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiTab, setAiTab] = useState('resumen'); // 'resumen' | 'mejorar' | 'respuestas'
+  const [resumenData, setResumenData] = useState(null);
+  const [traducciones, setTraducciones] = useState({});
+  const [traduciendoMsgId, setTraduciendoMsgId] = useState(null);
+  const [hablandoMsgId, setHablandoMsgId] = useState(null);
+
+  const handleTraducirMensaje = async (msg) => {
+    if (!msg || !msg.text) return;
+    setTraduciendoMsgId(msg.id);
+    setSelectedMessage(null);
+    try {
+      const trad = await traducirTexto(msg.text, 'es');
+      setTraducciones((prev) => ({ ...prev, [msg.id]: trad }));
+    } catch (e) {
+      Alert.alert('Traducción', 'No se pudo conectar con el servicio de traducción.');
+    } finally {
+      setTraduciendoMsgId(null);
+    }
+  };
+
+  const handleEscucharMensaje = (msg) => {
+    if (!msg || !msg.text) return;
+    setSelectedMessage(null);
+    if (hablandoMsgId === msg.id) {
+      Speech.stop();
+      setHablandoMsgId(null);
+      return;
+    }
+    Speech.stop();
+    setHablandoMsgId(msg.id);
+    Speech.speak(msg.text, {
+      language: 'es-ES',
+      pitch: 1.0,
+      rate: 0.95,
+      onDone: () => setHablandoMsgId(null),
+      onError: () => setHablandoMsgId(null),
+    });
+  };
+
+  const handleAplicarMejora = (estilo) => {
+    const mejorado = optimizarMensaje(text || 'Hola, ¿cómo estás?', estilo);
+    setText(mejorado);
+    setShowAiModal(false);
+  };
+
+  const handleEnviarResumenAlChat = () => {
+    if (!resumenData) return;
+    const lineas = [
+      `🤖 *Resumen NexAI de la Conversación:*`,
+      `• ${resumenData.resumenGeneral}`,
+    ];
+    if (resumenData.puntosClave?.length > 0) {
+      lineas.push(`📌 *Temas:* ${resumenData.puntosClave.join(' | ')}`);
+    }
+    if (resumenData.acuerdos?.length > 0) {
+      lineas.push(`⏰ *Acuerdos / Horarios:* ${resumenData.acuerdos.join(' • ')}`);
+    }
+    const textoResumen = lineas.join('\n');
+    if (onSendMessage) onSendMessage(chat.id, textoResumen);
+    setShowAiModal(false);
+  };
 
   const scrollRef = useRef(null);
 
@@ -287,6 +360,10 @@ export default function ChatDetalleScreen({
   // Permitir volver atrás deslizando el borde o con el botón Atrás de Android sin cerrar la app
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showAiModal) {
+        setShowAiModal(false);
+        return true;
+      }
       if (infoModal) {
         setInfoModal(false);
         return true;
@@ -306,7 +383,7 @@ export default function ChatDetalleScreen({
       return false;
     });
     return () => sub.remove();
-  }, [infoModal, selectedMessage, showPicker, onBack]);
+  }, [showAiModal, infoModal, selectedMessage, showPicker, onBack]);
 
   useEffect(() => {
     let interval;
@@ -633,6 +710,19 @@ export default function ChatDetalleScreen({
             </>
           )}
           <TouchableOpacity
+            onPress={() => setWalkMode(!walkMode)}
+            style={[
+              styles.headerIconBtn,
+              walkMode && { backgroundColor: 'rgba(56,189,248,0.32)' },
+            ]}
+          >
+            <Ionicons
+              name={walkMode ? "walk" : "walk-outline"}
+              size={21}
+              color={walkMode ? "#38BDF8" : "#FFFFFF"}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => setEphemeralMode(!ephemeralMode)}
             style={[
               styles.headerIconBtn,
@@ -656,6 +746,19 @@ export default function ChatDetalleScreen({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* BANNER DINÁMICO DE MODO CAMINAR SEGURO (WALK & TALK) */}
+      {walkMode && (
+        <View style={styles.walkModeBanner}>
+          <Ionicons name="walk" size={16} color="#38BDF8" />
+          <Text style={styles.walkModeBannerText}>
+            Modo Caminar Activo • Contraste alto y respuestas rápidas
+          </Text>
+          <TouchableOpacity onPress={() => setWalkMode(false)}>
+            <Ionicons name="close-circle" size={18} color="#38BDF8" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* PÍLDORA ELEGANTE DE CIFRADO E2EE ESTILO WHATSAPP */}
       <TouchableOpacity
@@ -804,6 +907,29 @@ export default function ChatDetalleScreen({
                 >
                   {msg.text}
                 </Text>
+              )}
+
+              {traducciones[msg.id] && (
+                <View style={[styles.translatedBox, { borderTopColor: isMe ? 'rgba(255,255,255,0.2)' : 'rgba(0,168,132,0.3)' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                    <Ionicons name="language" size={12} color={isMe ? '#FFFFFF' : '#00A884'} />
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: isMe ? '#E0F2FE' : '#00A884' }}>
+                      Traducción NexAI:
+                    </Text>
+                  </View>
+                  <Text style={[styles.translatedText, { color: isMe ? '#FFFFFF' : colors.text }]}>
+                    {traducciones[msg.id]}
+                  </Text>
+                </View>
+              )}
+
+              {hablandoMsgId === msg.id && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, backgroundColor: 'rgba(168,85,247,0.18)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                  <Ionicons name="volume-high" size={13} color="#A855F7" />
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#A855F7' }}>
+                    Reproduciendo en voz alta...
+                  </Text>
+                </View>
               )}
 
               <View style={styles.msgFooter}>
@@ -955,6 +1081,34 @@ export default function ChatDetalleScreen({
               </Text>
             </View>
           )}
+          {/* BARRA DE RESPUESTAS RÁPIDAS AL CAMINAR (WALK & TALK) */}
+          {walkMode && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.walkQuickBar}
+            >
+              {[
+                '🚶 Voy en camino',
+                '👍 Listo, ya casi llego',
+                '⏳ Dame 5 minutos',
+                '📍 ¿Dónde estás?',
+                '👌 Confirmado',
+                '🚶 Caminando hacia allá',
+              ].map((frase, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  onPress={() => {
+                    if (onSendMessage) onSendMessage(chat.id, frase);
+                  }}
+                  style={[styles.walkQuickChip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <Text style={[styles.walkQuickText, { color: colors.text }]}>{frase}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
           <View style={[styles.inputBar, { backgroundColor: colors.bg }]}>
             <View style={[styles.inputPillContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <TouchableOpacity
@@ -996,9 +1150,24 @@ export default function ChatDetalleScreen({
                 style={styles.pillIconBtn}
               >
                 <Ionicons
-                  name="sparkles-outline"
+                  name="happy-outline"
                   size={21}
                   color={showPicker && pickerTab === 'stickers' ? colors.primary : colors.textMuted}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  const res = resumirConversacion(chat.messages || [], chat.name);
+                  setResumenData(res);
+                  setShowAiModal(true);
+                }}
+                style={styles.pillIconBtn}
+              >
+                <Ionicons
+                  name="sparkles"
+                  size={20}
+                  color="#A855F7"
                 />
               </TouchableOpacity>
 
@@ -1039,11 +1208,11 @@ export default function ChatDetalleScreen({
         <View style={styles.modalOverlay}>
           <View style={[styles.deleteModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <View style={[styles.iconBadge, { backgroundColor: 'rgba(239,68,68,0.14)' }]}>
-                <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              <View style={[styles.iconBadge, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
+                <Ionicons name="sparkles" size={20} color="#A855F7" />
               </View>
               <Text style={[styles.deleteModalTitle, { color: colors.text }]}>
-                ¿Eliminar este mensaje?
+                Opciones del Mensaje
               </Text>
             </View>
 
@@ -1053,6 +1222,32 @@ export default function ChatDetalleScreen({
                   "{selectedMessage.text}"
                 </Text>
               </View>
+            )}
+
+            {/* OPCIÓN TRADUCIR CON NEXAI */}
+            {selectedMessage?.text && (
+              <TouchableOpacity
+                onPress={() => handleTraducirMensaje(selectedMessage)}
+                style={[styles.deleteRowBtn, { backgroundColor: 'rgba(56,189,248,0.12)', marginBottom: 8 }]}
+              >
+                <Ionicons name="language" size={18} color="#38BDF8" />
+                <Text style={[styles.deleteOptionText, { color: '#38BDF8' }]}>
+                  {traduciendoMsgId === selectedMessage.id ? 'Traduciendo...' : 'Traducir con NexAI'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* OPCIÓN ESCUCHAR EN VOZ ALTA */}
+            {selectedMessage?.text && (
+              <TouchableOpacity
+                onPress={() => handleEscucharMensaje(selectedMessage)}
+                style={[styles.deleteRowBtn, { backgroundColor: 'rgba(168,85,247,0.12)', marginBottom: 8 }]}
+              >
+                <Ionicons name="volume-high-outline" size={18} color="#A855F7" />
+                <Text style={[styles.deleteOptionText, { color: '#A855F7' }]}>
+                  {hablandoMsgId === selectedMessage.id ? 'Detener lectura' : 'Escuchar en voz alta'}
+                </Text>
+              </TouchableOpacity>
             )}
 
             <TouchableOpacity
@@ -1093,6 +1288,207 @@ export default function ChatDetalleScreen({
                 Cancelar
               </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL ASISTENTE INTELIGENTE NEXAI */}
+      <Modal
+        visible={showAiModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAiModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.aiModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {/* Header del Modal AI */}
+            <View style={styles.aiModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={styles.aiSparkleBadge}>
+                  <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                </View>
+                <View>
+                  <Text style={[styles.aiModalTitle, { color: colors.text }]}>NexAI Copilot</Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Inteligencia Artificial Integrada</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowAiModal(false)} style={styles.aiCloseBtn}>
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Pestañas de Funciones AI */}
+            <View style={[styles.aiTabsRow, { backgroundColor: colors.inputBg }]}>
+              {[
+                { id: 'resumen', label: '¿Qué me perdí?', icon: 'document-text-outline' },
+                { id: 'mejorar', label: 'Mejorar Texto', icon: 'color-wand-outline' },
+                { id: 'respuestas', label: 'Respuestas', icon: 'chatbubbles-outline' },
+              ].map((tab) => (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setAiTab(tab.id)}
+                  style={[
+                    styles.aiTabPill,
+                    aiTab === tab.id && { backgroundColor: '#A855F7' },
+                  ]}
+                >
+                  <Ionicons
+                    name={tab.icon}
+                    size={14}
+                    color={aiTab === tab.id ? '#FFFFFF' : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.aiTabLabel,
+                      { color: aiTab === tab.id ? '#FFFFFF' : colors.textMuted },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
+              {/* TAB 1: RESUMEN DE LA CONVERSACIÓN */}
+              {aiTab === 'resumen' && (
+                <View style={{ paddingVertical: 10 }}>
+                  <View style={[styles.aiCardBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <Text style={[styles.aiSectionTitle, { color: colors.text }]}>
+                      📋 Resumen Ejecutivo
+                    </Text>
+                    <Text style={[styles.aiBodyText, { color: colors.text }]}>
+                      {resumenData?.resumenGeneral || 'Analizando mensajes del chat...'}
+                    </Text>
+
+                    {resumenData?.puntosClave?.length > 0 && (
+                      <View style={{ marginTop: 10 }}>
+                        <Text style={[styles.aiSubHeader, { color: colors.textMuted }]}>
+                          📌 TEMAS DESTACADOS
+                        </Text>
+                        {resumenData.puntosClave.map((punto, i) => (
+                          <Text key={i} style={[styles.aiBulletText, { color: colors.text }]}>
+                            • {punto}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+
+                    {resumenData?.acuerdos?.length > 0 && (
+                      <View style={{ marginTop: 10 }}>
+                        <Text style={[styles.aiSubHeader, { color: '#10B981' }]}>
+                          ⏰ ACUERDOS & HORARIOS DETECTADOS
+                        </Text>
+                        {resumenData.acuerdos.map((acuerdo, i) => (
+                          <Text key={i} style={[styles.aiBulletText, { color: colors.text }]}>
+                            ✓ {acuerdo}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+
+                    {resumenData?.preguntasPendientes?.length > 0 && (
+                      <View style={{ marginTop: 10 }}>
+                        <Text style={[styles.aiSubHeader, { color: '#F59E0B' }]}>
+                          ❓ PREGUNTAS ABIERTAS
+                        </Text>
+                        {resumenData.preguntasPendientes.map((preg, i) => (
+                          <Text key={i} style={[styles.aiBulletText, { color: colors.text }]}>
+                            ? {preg}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                    <TouchableOpacity
+                      onPress={handleEnviarResumenAlChat}
+                      style={[styles.aiActionBtn, { backgroundColor: '#A855F7' }]}
+                    >
+                      <Ionicons name="paper-plane" size={16} color="#FFFFFF" />
+                      <Text style={styles.aiActionBtnText}>Enviar al Chat</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (resumenData?.resumenGeneral) {
+                          setText(resumenData.resumenGeneral);
+                          setShowAiModal(false);
+                        }
+                      }}
+                      style={[styles.aiActionBtn, { backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border }]}
+                    >
+                      <Ionicons name="copy-outline" size={16} color={colors.text} />
+                      <Text style={[styles.aiActionBtnText, { color: colors.text }]}>Copiar al Input</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* TAB 2: MEJORAR TEXTO ESCRITO */}
+              {aiTab === 'mejorar' && (
+                <View style={{ paddingVertical: 10 }}>
+                  <Text style={[styles.aiSubHeader, { color: colors.textMuted }]}>
+                    TU MENSAJE ACTUAL:
+                  </Text>
+                  <View style={[styles.aiCurrentMessageBox, { backgroundColor: colors.inputBg, borderColor: colors.border }]}>
+                    <Text style={{ color: text.trim() ? colors.text : colors.textMuted, fontSize: 13, fontStyle: text.trim() ? 'normal' : 'italic' }}>
+                      {text.trim() ? `"${text}"` : 'Escribe algo en la barra de mensajes para mejorarlo con IA.'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.aiSubHeader, { color: colors.textMuted, marginTop: 14 }]}>
+                    ELIGE UN ESTILO CON 1 TOQUE:
+                  </Text>
+
+                  {[
+                    { id: 'profesional', label: '💼 Profesional & Formal', desc: 'Ideal para clientes, trabajo o acuerdos serios' },
+                    { id: 'amable', label: '😊 Amable & Cercano', desc: 'Saludo cálido con buena vibra' },
+                    { id: 'conciso', label: '⚡ Directo & Al Grano', desc: 'Sin rodeos, claro y rápido' },
+                    { id: 'entusiasta', label: '🚀 Entusiasta & Alegre', desc: 'Con energía positiva y emojis' },
+                  ].map((style) => (
+                    <TouchableOpacity
+                      key={style.id}
+                      onPress={() => handleAplicarMejora(style.id)}
+                      style={[styles.aiStyleCard, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.aiStyleTitle, { color: colors.text }]}>{style.label}</Text>
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>{style.desc}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* TAB 3: RESPUESTAS RÁPIDAS INTELIGENTES */}
+              {aiTab === 'respuestas' && (
+                <View style={{ paddingVertical: 10 }}>
+                  <Text style={[styles.aiSubHeader, { color: colors.textMuted }]}>
+                    SUGERIDAS SEGÚN EL ÚLTIMO MENSAJE:
+                  </Text>
+
+                  {sugerirRespuestasRapidas(
+                    chat.messages?.[chat.messages.length - 1]
+                  ).map((sug, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      onPress={() => {
+                        setText(sug);
+                        setShowAiModal(false);
+                      }}
+                      style={[styles.aiQuickReplyCard, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                    >
+                      <View style={[styles.aiQuickReplyDot, { backgroundColor: '#A855F7' }]} />
+                      <Text style={[styles.aiQuickReplyText, { color: colors.text }]}>{sug}</Text>
+                      <Ionicons name="arrow-up-circle-outline" size={18} color="#A855F7" />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1802,5 +2198,169 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  walkModeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(14, 165, 233, 0.16)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(56, 189, 248, 0.4)',
+    gap: 8,
+  },
+  walkModeBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#38BDF8',
+  },
+  walkQuickBar: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  walkQuickChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  walkQuickText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  translatedBox: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+  },
+  translatedText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  aiModalCard: {
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+  },
+  aiModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  aiSparkleBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#A855F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiModalTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  aiCloseBtn: {
+    padding: 6,
+  },
+  aiTabsRow: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    padding: 4,
+    gap: 4,
+    marginBottom: 6,
+  },
+  aiTabPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  aiTabLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  aiCardBox: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  aiSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  aiBodyText: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  aiSubHeader: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  aiBulletText: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  aiActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  aiActionBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  aiCurrentMessageBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  aiStyleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+    gap: 10,
+  },
+  aiStyleTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  aiQuickReplyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+    gap: 10,
+  },
+  aiQuickReplyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  aiQuickReplyText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
