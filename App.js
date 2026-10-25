@@ -1310,10 +1310,6 @@ function MainApp() {
     setIsSharingScreen(false);
     setIsCameraOn(false);
   };
-    setIncomingCall(null);
-    setIsSharingScreen(false);
-    setIsCameraOn(false);
-  };
 
   // 8. Actualizar perfil
   const handleUpdateProfile = async (updated) => {
